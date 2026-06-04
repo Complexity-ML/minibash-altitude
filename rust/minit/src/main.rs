@@ -959,7 +959,15 @@ fn main() {
     load_storage_modules();
     set_hostname();
     network_up();
-    let persistent = mount_persistent();
+    // Disk-root install (root= on the SSD/HDD): /var/bdb already lives on the
+    // persistent root, so skip the RAM-model persistence dance entirely —
+    // mounting a ramfs over it here would shadow the real data.
+    let persistent = if kernel_arg("minibash.root").as_deref() == Some("disk") {
+        log("disk-root mode: /var/bdb is on the persistent root");
+        true
+    } else {
+        mount_persistent()
+    };
     seed_db(persistent);
 
     // Rust boot summary helper (prints to the console)

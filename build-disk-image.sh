@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Assemble a bootable disk-root image (GPT: EFI System Partition with GRUB +
+# kernel + boot-initramfs, and an ext4 root partition populated from the rootfs
+# tarball). Fully unprivileged: mke2fs -d for the root fs, mtools for the ESP,
+# grub-mkstandalone for the bootloader. dd this onto the target SSD/HDD, or boot
+# it in QEMU to validate the disk-root boot model.
+set -euo pipefail
+
+DISTRO_DIR="${DISTRO_DIR:-/work/minibash-linux}"
+OUT_DIR="${OUT_DIR:-$DISTRO_DIR/out}"
+ROOTFS_TGZ="${ROOTFS_TGZ:-$OUT_DIR/minibash-rootfs.tar.gz}"
+BOOT_INITRAMFS="${BOOT_INITRAMFS:-$OUT_DIR/minibash-boot.cpio.gz}"
+KERNEL_IMAGE="${KERNEL_IMAGE:-$OUT_DIR/debian-vmlinuz}"
+DISK_IMG="${DISK_IMG:-$OUT_DIR/minibash-disk.img}"
+IMG_SIZE_MB="${IMG_SIZE_MB:-5120}"
+ESP_MB="${ESP_MB:-256}"
+ROOT_LABEL="${ROOT_LABEL:-minibashroot}"
+
+log() { printf '[minibash:diskimg] %s\n' "$*"; }
+
+for f in "$ROOTFS_TGZ" "$BOOT_INITRAMFS" "$KERNEL_IMAGE"; do
+  [ -f "$f" ] || { echo "missing artifact: $f (run build-disk.sh + fetch kernel first)" >&2; exit 1; }
+done
+
+# --- extract rootfs to a staging dir for mke2fs -d --------------------------
+ROOTDIR=/tmp/mb-root-extract
+rm -rf "$ROOTDIR"; mkdir -p "$ROOTDIR"
+log "extracting rootfs tarball"
+tar -xzf "$ROOTFS_TGZ" -C "$ROOTDIR"
+
+# --- geometry ---------------------------------------------------------------
+esp_sectors=$((ESP_MB * 1024 * 1024 / 512))
+data_start=$((2048 + esp_sectors))
+data_mb=$((IMG_SIZE_MB - ESP_MB - 2))
+
+log "creating ${IMG_SIZE_MB}MiB image"
+rm -f "$DISK_IMG"
+dd if=/dev/zero of="$DISK_IMG" bs=1M count="$IMG_SIZE_MB" status=none
+
+sfdisk "$DISK_IMG" >/dev/null <<EOF
+label: gpt
+unit: sectors
+first-lba: 2048
+start=2048, size=${ESP_MB}M, type=uefi, name="MINIBASHEFI"
+start=${data_start}, type=linux, name="MINIBASHROOT"
+EOF
+
+# --- ext4 root partition (populated, unprivileged) --------------------------
+log "building ext4 root (${data_mb}MiB) from rootfs"
+data_img="$(mktemp)"
+mke2fs -q -t ext4 -L "$ROOT_LABEL" -d "$ROOTDIR" -F "$data_img" "${data_mb}M"
+
+# --- ESP: GRUB + kernel + boot initramfs ------------------------------------
+log "building ESP (GRUB + kernel + boot initramfs)"
+esp_img="$(mktemp)"
+dd if=/dev/zero of="$esp_img" bs=1M count="$ESP_MB" status=none
+mformat -i "$esp_img" -F -v MINIBASHEFI ::
+mmd -i "$esp_img" ::/EFI ::/EFI/BOOT
+
+grub_cfg="$(mktemp)"
+trap 'rm -f "$grub_cfg" "$esp_img" "$data_img"' EXIT
+cat > "$grub_cfg" <<CFG
+set timeout=3
+set default=0
+serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
+terminal_input console serial
+terminal_output console serial
+search --no-floppy --label MINIBASHEFI --set=root
+
+menuentry "minibash-linux (disk root)" {
+  search --no-floppy --label MINIBASHEFI --set=root
+  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw init=/init minibash.root=disk console=tty0 console=ttyS0,115200 panic=10 loglevel=4 minibash.tty=tty1 minibash.autologin=root minibash.keymap=fr
+  initrd /boot.cpio.gz
+}
+
+menuentry "minibash-linux (disk root, serial)" {
+  search --no-floppy --label MINIBASHEFI --set=root
+  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw init=/init minibash.root=disk console=ttyS0,115200 panic=10 loglevel=4 minibash.tty=ttyS0 minibash.autologin=root minibash.keymap=fr
+  initrd /boot.cpio.gz
+}
+CFG
+
+bootefi="$(mktemp)"
+grub-mkstandalone \
+  -O x86_64-efi \
+  --modules="part_gpt fat ext2 search search_label linux normal configfile efi_gop efi_uga all_video serial terminal" \
+  -o "$bootefi" \
+  "boot/grub/grub.cfg=$grub_cfg" >/dev/null
+mcopy -i "$esp_img" "$bootefi" ::/EFI/BOOT/BOOTX64.EFI
+rm -f "$bootefi"
+mcopy -i "$esp_img" "$KERNEL_IMAGE" ::/kernel
+mcopy -i "$esp_img" "$BOOT_INITRAMFS" ::/boot.cpio.gz
+
+# --- assemble ---------------------------------------------------------------
+log "writing partitions into image"
+dd if="$esp_img" of="$DISK_IMG" bs=512 seek=2048 conv=notrunc status=none
+dd if="$data_img" of="$DISK_IMG" bs=512 seek="$data_start" conv=notrunc status=none
+
+log "disk image ready: $DISK_IMG"
+ls -lh "$DISK_IMG"
