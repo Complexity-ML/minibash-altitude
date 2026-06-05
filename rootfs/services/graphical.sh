@@ -107,6 +107,13 @@ sleep 1
 # 2. elogind (the logind implementation mutter talks to). Same idea: normally
 # owned by the elogind BDB service, fallback for manual graphical starts.
 log "checking desktop system services"
+if ! pgrep -x elogind >/dev/null 2>&1; then
+  # LightDM/GNOME can leave stale elogind runtime state behind after a hard
+  # display restart. In our non-systemd boot, that can make elogind abort before
+  # it owns org.freedesktop.login1, leaving LightDM on a black VT.
+  rm -f /run/elogind.pid /run/systemd/seats/* /run/systemd/sessions/* /run/systemd/users/* 2>/dev/null || true
+  mkdir -p /run/elogind /run/systemd/seats /run/systemd/sessions /run/systemd/users
+fi
 start_if_missing org.freedesktop.login1 elogind /usr/libexec/elogind
 start_if_missing org.freedesktop.UPower upowerd /usr/libexec/upowerd --verbose
 start_if_missing org.freedesktop.Accounts accounts-daemon /usr/libexec/accounts-daemon
