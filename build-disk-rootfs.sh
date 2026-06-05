@@ -95,7 +95,7 @@ log "installing base runtime (network, ssh, wifi, seat, gpu)"
 inchroot apt-get update
 inchroot apt-get install -y --no-install-recommends \
   linux-image-amd64 \
-  network-manager wpasupplicant iw rfkill \
+  network-manager iwd wpasupplicant iw rfkill \
   firmware-iwlwifi firmware-realtek firmware-atheros firmware-brcm80211 \
   wireless-regdb firmware-misc-nonfree \
   pciutils usbutils \
@@ -104,7 +104,7 @@ inchroot apt-get install -y --no-install-recommends \
   seatd \
   libgl1-mesa-dri libegl-mesa0 libgbm1 libegl1 libgles2 mesa-utils \
   fonts-dejavu-core fontconfig \
-  sudo vim-tiny less iproute2 iputils-ping nano python3 \
+  sudo vim-tiny less iproute2 iputils-ping nano python3 openssl \
   procps psmisc \
   build-essential cargo rustc zstd
 
@@ -168,7 +168,7 @@ log "overlaying minibash (init, bdb, services, tools)"
 for p in services bin/bdb bin/bdbql bin/bdbsh bin/bashsvc bin/login bin/passwd bin/desktop bin/desktop-install \
          bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
          bin/netfix bin/wifidiag bin/minibash-services bin/minibash-desktop-warmup \
-         etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/polkit-1 etc/sudoers.d \
+         etc/minibash etc/shells etc/NetworkManager etc/iwd etc/lightdm etc/polkit-1 etc/sudoers.d \
          etc/modprobe.d/iwl.conf etc/fstab etc/xdg usr/share/applications usr/src/minibash; do
   if [ -e "$DISTRO_DIR/rootfs/$p" ]; then
     mkdir -p "$CHROOT/$(dirname "$p")"
@@ -186,8 +186,9 @@ fi
 
 # Desktop services in the native bdb. With GNOME pre-baked, enable graphical
 # services. Without it, leave them down for a clean console boot.
-desktop_services="udevd dbus wpasupp elogind polkit upower rtkit accounts displayd portald udisksd graphical"
+desktop_services="udevd dbus elogind polkit upower rtkit accounts displayd portald udisksd graphical"
 inchroot /bin/bdbc update services --where name=desktopd autostart=false desired=down >/dev/null || true
+inchroot /bin/bdbc update services --where name=wpasupp autostart=false desired=down >/dev/null || true
 if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
   for svc in $desktop_services; do
     inchroot /bin/bdbc update services --where "name=$svc" autostart=true desired=up >/dev/null || true
@@ -219,6 +220,7 @@ chmod 440 "$CHROOT"/etc/sudoers.d/* 2>/dev/null || true
 # the minibash desktop user (non-root, for sway/GNOME) + groups
 inchroot bash -c 'id minibash >/dev/null 2>&1 || useradd -m -s /bin/bash -G video,input,render,audio,netdev minibash'
 inchroot bash -c 'mkdir -p /home/minibash/.config /home/minibash/.local/share; chown -R minibash:minibash /home/minibash; chmod 755 /home/minibash'
+inchroot bash -c 'rh="$(openssl passwd -6 root)"; mh="$(openssl passwd -6 minibash)"; printf "root:%s\nminibash:%s\n" "$rh" "$mh" | chpasswd -e'
 # root + minibash SSH key
 mkdir -p "$CHROOT/root/.ssh"
 cp -a "$DISTRO_DIR/rootfs/root/.ssh/authorized_keys" "$CHROOT/root/.ssh/" 2>/dev/null || true

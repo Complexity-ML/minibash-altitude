@@ -61,7 +61,8 @@ mkdir -p /run/dbus /run/elogind /run/lightdm /var/lib/lightdm /var/lib/lightdm-d
 if id minibash >/dev/null 2>&1; then
   mkdir -p /home/minibash/.config /home/minibash/.local/share /run/user/1000 /tmp/.ICE-unix /tmp/.X11-unix
   mkdir -p /home/minibash/.config/autostart
-  chown -R minibash:minibash /home/minibash /run/user/1000
+  chown -R minibash:minibash /home/minibash
+  chown minibash:minibash /run/user/1000
   chmod 755 /home/minibash
   chmod 700 /run/user/1000
   chmod 1777 /tmp/.ICE-unix /tmp/.X11-unix
@@ -112,7 +113,11 @@ start_if_missing org.freedesktop.Accounts accounts-daemon /usr/libexec/accounts-
 start_if_missing org.freedesktop.UDisks2 udisksd /usr/libexec/udisks2/udisksd --no-debug
 start_if_missing org.freedesktop.PolicyKit1 polkitd /usr/lib/polkit-1/polkitd --no-debug
 mkdir -p /run/wpa_supplicant
-start_if_missing fi.w1.wpa_supplicant1 wpa_supplicant /usr/sbin/wpa_supplicant -u -s -O /run/wpa_supplicant
+if [ -x /usr/libexec/iwd ]; then
+  start_if_missing net.connman.iwd iwd /usr/libexec/iwd
+else
+  start_if_missing fi.w1.wpa_supplicant1 wpa_supplicant /usr/sbin/wpa_supplicant -u -s -O /run/wpa_supplicant
+fi
 sleep 1
 
 # 3. lightdm -> autologin -> GNOME

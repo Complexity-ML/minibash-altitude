@@ -42,6 +42,7 @@ managed=true
 unmanaged-devices=none
 
 [device]
+wifi.backend=iwd
 match-device=*
 managed=1
 EOF
@@ -56,6 +57,7 @@ managed=true
 unmanaged-devices=none
 
 [device-all]
+wifi.backend=iwd
 match-device=*
 managed=1
 
@@ -68,10 +70,15 @@ match-device=type:ethernet
 managed=1
 EOF
 
-for m in evdev mousedev cfg80211 mac80211 rfkill iwlwifi iwlmvm r8169 r8125 e1000e igb; do
+for m in \
+  crypto_user algif_hash algif_skcipher ecb cbc md5 aesni_intel des_generic cmac hmac \
+  evdev mousedev cfg80211 mac80211 rfkill iwlwifi iwlmvm r8169 r8125 e1000e igb; do
   modprobe "$m" 2>/dev/null || true
 done
 rfkill unblock all 2>/dev/null || true
+if command -v iw >/dev/null 2>&1 && ! iw dev "${WIFI_IFACE:-wlan0}" info >/dev/null 2>&1; then
+  iw phy phy0 interface add "${WIFI_IFACE:-wlan0}" type managed 2>/dev/null || true
+fi
 
 if command -v udevadm >/dev/null 2>&1; then
   if ! pgrep -x systemd-udevd >/dev/null 2>&1 && ! pgrep -x udevd >/dev/null 2>&1; then
@@ -83,29 +90,42 @@ fi
 
 if [ -n "${WIFI_SSID:-}" ] && [ -n "${WIFI_PSK:-}" ]; then
   mkdir -p /etc/NetworkManager/system-connections
-  cat > "/etc/NetworkManager/system-connections/${WIFI_SSID}.nmconnection" <<EOF
+  nm_conn="/etc/NetworkManager/system-connections/${WIFI_SSID}.nmconnection"
+  {
+    cat <<EOF
 [connection]
 id=${WIFI_SSID}
 type=wifi
+interface-name=${WIFI_IFACE:-wlan0}
 autoconnect=true
 autoconnect-priority=100
 
 [wifi]
 mode=infrastructure
 ssid=${WIFI_SSID}
+mac-address-randomization=1
+EOF
+    [ -n "${WIFI_BSSID:-}" ] && echo "bssid=${WIFI_BSSID}"
+    [ -n "${WIFI_BAND:-}" ] && echo "band=${WIFI_BAND}"
+    [ -n "${WIFI_CHANNEL:-}" ] && echo "channel=${WIFI_CHANNEL}"
+    cat <<EOF
 
 [wifi-security]
 key-mgmt=wpa-psk
+proto=rsn
+pairwise=ccmp
+group=ccmp
+pmf=1
 psk=${WIFI_PSK}
 
 [ipv4]
 method=auto
 
 [ipv6]
-method=auto
-addr-gen-mode=default
+method=ignore
 EOF
-  chmod 600 "/etc/NetworkManager/system-connections/${WIFI_SSID}.nmconnection"
+  } > "$nm_conn"
+  chmod 600 "$nm_conn"
 fi
 
 detect_eth() {
@@ -136,6 +156,23 @@ if [ -n "$ETH" ]; then
 fi
 
 [ -S /run/dbus/system_bus_socket ] || dbus-daemon --system --fork 2>/dev/null || true
+if [ -x /usr/libexec/iwd ]; then
+  killall wpa_supplicant 2>/dev/null || true
+  mkdir -p /var/lib/iwd
+  if [ -n "${WIFI_SSID:-}" ] && [ -n "${WIFI_PSK:-}" ]; then
+    cat > "/var/lib/iwd/${WIFI_SSID}.psk" <<EOF
+[Security]
+Passphrase=${WIFI_PSK}
+
+[Settings]
+AutoConnect=true
+EOF
+    chmod 600 "/var/lib/iwd/${WIFI_SSID}.psk"
+  fi
+  pgrep -x iwd >/dev/null 2>&1 || /usr/libexec/iwd >/var/log/iwd.log 2>&1 &
+  sleep 2
+  iwctl device "${WIFI_IFACE:-wlan0}" set-property Powered on >/dev/null 2>&1 || true
+fi
 
 log "starting NetworkManager"
 exec NetworkManager --no-daemon --log-level=INFO

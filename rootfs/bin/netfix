@@ -28,6 +28,9 @@ managed=true
 
 [keyfile]
 unmanaged-devices=none
+
+[device]
+wifi.backend=iwd
 EOF
 cat > /etc/NetworkManager/conf.d/10-minibash.conf <<'EOF'
 [main]
@@ -40,6 +43,7 @@ managed=true
 unmanaged-devices=none
 
 [device-wifi]
+wifi.backend=iwd
 match-device=type:wifi
 managed=1
 
@@ -49,6 +53,7 @@ managed=1
 EOF
 
 for mod in \
+  crypto_user algif_hash algif_skcipher ecb cbc md5 aesni_intel des_generic cmac hmac \
   cfg80211 mac80211 rfkill \
   iwlwifi iwlmvm iwldvm \
   rtw88_core rtw88_pci rtw89_core rtw89_pci rtl8xxxu \
@@ -58,6 +63,9 @@ for mod in \
   modprobe "$mod" 2>/dev/null || true
 done
 rfkill unblock all 2>/dev/null || true
+if command -v iw >/dev/null 2>&1 && ! iw dev wlan0 info >/dev/null 2>&1; then
+  iw phy phy0 interface add wlan0 type managed 2>/dev/null || true
+fi
 
 IF="$(detect_wifi_if || true)"
 [ -n "$IF" ] || {
@@ -70,6 +78,23 @@ iw reg set FR 2>/dev/null || true
 ip link set "$IF" up 2>/dev/null || true
 
 [ -S /run/dbus/system_bus_socket ] || dbus-daemon --system --fork 2>/dev/null || true
+if [ -x /usr/libexec/iwd ]; then
+  killall wpa_supplicant 2>/dev/null || true
+  mkdir -p /var/lib/iwd
+  if [ -n "$PSK" ]; then
+    cat > "/var/lib/iwd/${SSID}.psk" <<EOF
+[Security]
+Passphrase=${PSK}
+
+[Settings]
+AutoConnect=true
+EOF
+    chmod 600 "/var/lib/iwd/${SSID}.psk"
+  fi
+  pgrep -x iwd >/dev/null 2>&1 || /usr/libexec/iwd >/var/log/iwd.log 2>&1 &
+  sleep 2
+  iwctl device "$IF" set-property Powered on >/dev/null 2>&1 || true
+fi
 pkill -x NetworkManager 2>/dev/null || true
 sleep 1
 NetworkManager --no-daemon >/var/log/NetworkManager-live.log 2>&1 &
@@ -86,6 +111,49 @@ nmcli device status
 iw dev "$IF" scan ssid "$SSID" >/tmp/netfix-iw-scan.log 2>&1 || true
 nmcli device wifi rescan ifname "$IF" 2>/dev/null || nmcli device wifi rescan || true
 nmcli device wifi list ifname "$IF" 2>/dev/null || nmcli device wifi list || true
+
+if [ -n "$PSK" ]; then
+  mkdir -p /etc/NetworkManager/system-connections
+  rm -f "/etc/NetworkManager/system-connections/${SSID}.nmconnection"
+  nmcli connection delete "$SSID" >/dev/null 2>&1 || true
+  {
+    cat <<EOF
+[connection]
+id=${SSID}
+type=wifi
+interface-name=${IF}
+autoconnect=true
+autoconnect-priority=100
+
+[wifi]
+mode=infrastructure
+ssid=${SSID}
+mac-address-randomization=1
+EOF
+    [ -n "${WIFI_BSSID:-}" ] && echo "bssid=${WIFI_BSSID}"
+    [ -n "${WIFI_BAND:-}" ] && echo "band=${WIFI_BAND}"
+    [ -n "${WIFI_CHANNEL:-}" ] && echo "channel=${WIFI_CHANNEL}"
+    cat <<EOF
+
+[wifi-security]
+key-mgmt=wpa-psk
+proto=rsn
+pairwise=ccmp
+group=ccmp
+pmf=1
+psk=${PSK}
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=ignore
+EOF
+  } > "/etc/NetworkManager/system-connections/${SSID}.nmconnection"
+  chmod 600 "/etc/NetworkManager/system-connections/${SSID}.nmconnection"
+  nmcli connection reload || true
+fi
+
 nmcli device wifi connect "$SSID" password "$PSK" ifname "$IF" || nmcli connection up "$SSID"
 sleep 3
 if ip -4 addr show "$IF" | grep -q 'inet '; then
