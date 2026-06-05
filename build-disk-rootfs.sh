@@ -127,7 +127,8 @@ if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
     lightdm lightdm-gtk-greeter \
     xorg xwayland dbus-x11 \
     adwaita-icon-theme fonts-cantarell \
-    network-manager-gnome
+    network-manager-gnome yad zenity \
+    polkitd upower rtkit accountsservice
   echo "/usr/sbin/lightdm" > "$CHROOT/etc/X11/default-display-manager"
   # allow passwordless autologin for the minibash user
   inchroot bash -c 'getent group nopasswdlogin >/dev/null || groupadd nopasswdlogin; usermod -aG nopasswdlogin,seat minibash 2>/dev/null || usermod -aG nopasswdlogin minibash'
@@ -165,8 +166,9 @@ log "overlaying minibash (init, bdb, services, tools)"
 # selectively so we don't clobber Debian's system users/PAM/etc.
 for p in services bin/bdb bin/bashsvc bin/login bin/desktop bin/desktop-install \
          bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
-         bin/netfix bin/wifidiag etc/minibash etc/shells etc/NetworkManager \
-         etc/lightdm etc/modprobe.d/iwl.conf etc/fstab; do
+         bin/netfix bin/wifidiag bin/minibash-services \
+         etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/sudoers.d \
+         etc/modprobe.d/iwl.conf etc/fstab usr/share/applications; do
   if [ -e "$DISTRO_DIR/rootfs/$p" ]; then
     mkdir -p "$CHROOT/$(dirname "$p")"
     # -T: merge INTO an existing dir (e.g. Debian's /etc/NetworkManager) instead
@@ -186,12 +188,15 @@ def b(s): return base64.b64encode(s.encode()).decode()
 def d(s): return base64.b64decode(s).decode()
 rows=[l.rstrip('\n').split('\t') for l in open(F) if l.strip()]
 have=False
+desktop_services={'dbus','elogind','polkit','upower','rtkit','accounts','graphical'}
 for r in rows:
     n=d(r[0])
     if n=='desktopd': r[2]=b('false'); r[4]=b('down')   # sway off
+    if n in desktop_services:
+        r[2]=b('true' if gnome else 'false')
+        r[4]=b('up' if gnome else 'down')
     if n=='graphical':
         have=True
-        r[2]=b('true' if gnome else 'false'); r[4]=b('up' if gnome else 'down')
 if gnome and not have:
     rows.append([b('graphical'),b('/services/graphical.sh'),b('true'),b('true'),b('up'),b('stopped'),b('0'),b('GNOME desktop (lightdm+elogind)')])
 open(F,'w').write('\n'.join('\t'.join(r) for r in rows)+'\n')
@@ -211,10 +216,13 @@ if [ -f "$DISTRO_DIR/rust/bdbboot/Cargo.toml" ]; then
 fi
 chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bashsvc \
          "$CHROOT"/bin/login "$CHROOT"/bin/desktop "$CHROOT"/bin/gpu \
-         "$CHROOT"/bin/wifi "$CHROOT"/bin/netfix "$CHROOT"/bin/wifidiag 2>/dev/null || true
+         "$CHROOT"/bin/wifi "$CHROOT"/bin/netfix "$CHROOT"/bin/wifidiag \
+         "$CHROOT"/bin/minibash-services 2>/dev/null || true
+chmod 440 "$CHROOT"/etc/sudoers.d/* 2>/dev/null || true
 
 # the minibash desktop user (non-root, for sway/GNOME) + groups
 inchroot bash -c 'id minibash >/dev/null 2>&1 || useradd -m -s /bin/bash -G video,input,render,audio,netdev minibash'
+inchroot bash -c 'mkdir -p /home/minibash/.config /home/minibash/.local/share; chown -R minibash:minibash /home/minibash; chmod 755 /home/minibash'
 # root + minibash SSH key
 mkdir -p "$CHROOT/root/.ssh"
 cp -a "$DISTRO_DIR/rootfs/root/.ssh/authorized_keys" "$CHROOT/root/.ssh/" 2>/dev/null || true

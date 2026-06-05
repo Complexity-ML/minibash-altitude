@@ -1,0 +1,4 @@
+# Let the GNOME desktop user drive minibash services from the GUI without a
+# password (gnome-shell refuses to run as root, so the app runs as `minibash`
+# and shells out to these via sudo).
+minibash ALL=(root) NOPASSWD: /bin/bashsvc, /bin/bdb
