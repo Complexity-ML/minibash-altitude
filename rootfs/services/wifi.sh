@@ -39,7 +39,15 @@ if [ ! -e "/sys/class/net/$IF" ]; then
   while true; do log "no $IF; run 'wifi' on the console"; sleep 60; done
 fi
 
+# Make sure no competing manager fights us for the interface (NetworkManager on
+# the Debian disk root, or a stray supplicant) — that causes an endless
+# authenticate/deauthenticate loop.
+pkill -x NetworkManager 2>/dev/null || true
+pkill -x wpa_supplicant 2>/dev/null || true
+
 ip link set "$IF" up 2>/dev/null || ifconfig "$IF" up 2>/dev/null || true
+# Disable WiFi power-save: the #1 cause of iwlwifi auth/deauth flapping.
+iw dev "$IF" set power_save off 2>/dev/null || true
 sleep 1
 
 # 4. associate (retry: the interface may need a moment after coming up)

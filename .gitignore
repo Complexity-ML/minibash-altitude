@@ -8,3 +8,5 @@ rust/**/Cargo.lock
 *.tar.gz
 .DS_Store
 rootfs/etc/wpa_supplicant.conf
+rootfs/etc/NetworkManager/system-connections/*.nmconnection
+rootfs/etc/minibash/wifi.creds

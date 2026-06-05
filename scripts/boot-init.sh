@@ -1,9 +1,7 @@
 #!/bin/busybox sh
-# minibash disk-root boot stub. This runs as PID 1 inside the SMALL boot
-# initramfs whose only job is: load storage + ext4 drivers, mount the real
-# root filesystem given by root=, then switch_root into it and exec the real
-# init (minit). The full rootfs (incl. GNOME) lives on disk, not in RAM.
-set -- # noop, keep busybox happy
+# minibash disk-root boot stub. Runs as PID 1 in the SMALL boot initramfs: load
+# storage + ext4 drivers, mount the real root (root=), switch_root into it and
+# exec the real /init (minit). The full rootfs lives on disk, not in RAM.
 
 BB=/bin/busybox
 
@@ -14,20 +12,37 @@ $BB mount -t devtmpfs devtmpfs /dev 2>/dev/null
 
 log() { $BB echo "[boot] $*"; }
 
-# Load storage controllers, disk + filesystem drivers. The boot initramfs ships
-# a curated /lib/modules/<ver> with a depmod index so modprobe resolves deps.
+# On any failure, FREEZE with a diagnostic instead of exiting (which would make
+# the kernel panic "attempted to kill init"). Shows what we actually detected.
+fail() {
+  log "FATAL: $*"
+  log "---- /proc/partitions ----"; $BB cat /proc/partitions 2>/dev/null
+  log "---- block devices ----"; $BB ls -l /dev/sd* /dev/vd* /dev/nvme* /dev/mmcblk* 2>/dev/null
+  log "---- loaded modules ----"
+  $BB cat /proc/modules 2>/dev/null | $BB awk '{print $1}' | $BB sort | $BB tr '\n' ' '
+  $BB echo ""
+  log "FROZEN (no reboot). Read the lines above to me."
+  while true; do $BB sleep 3600; done
+}
+
+# Load storage controllers + fs drivers by name (depmod-resolved)...
 log "loading storage/fs modules"
-for m in libata libahci ahci ata_piix ata_generic sd_mod nvme \
+for m in libata libahci ahci ata_piix ata_generic sata_nv sata_via sata_sil \
+         pata_amd pata_via pata_jmicron pata_sis pata_atiixp piix \
+         sd_mod sr_mod nvme \
          virtio_pci virtio_blk virtio_scsi \
-         usb-storage uas \
+         ehci_hcd ehci_pci ohci_hcd uhci_hcd xhci_hcd xhci_pci usb_storage uas \
          crc32c_generic crc32c-intel libcrc32c crc16 mbcache jbd2 ext4 \
-         vfat nls_cp437 nls_ascii; do
+         vfat nls_cp437 nls_ascii nls_iso8859_1; do
   $BB modprobe "$m" 2>/dev/null
 done
-# settle: give the kernel a moment to probe disks
-$BB sleep 2
+# ...and brute-force insmod everything we shipped, in case a name differs.
+for ko in $($BB find /lib/modules -name '*.ko' 2>/dev/null); do
+  $BB insmod "$ko" 2>/dev/null
+done
+$BB sleep 3
 
-# Parse root= and rootfstype= from the kernel command line.
+# Parse root= / rootfstype= from the kernel command line.
 root=""
 rootfstype="ext4"
 rootflags="rw"
@@ -40,42 +55,37 @@ for arg in $($BB cat /proc/cmdline); do
   esac
 done
 
-# Resolve UUID=/LABEL= forms via the by-uuid/by-label symlinks (mdev/devtmpfs).
 case "$root" in
-  UUID=*)  root="$($BB findfs "$root" 2>/dev/null || $BB echo "/dev/disk/by-uuid/${root#UUID=}")" ;;
-  LABEL=*) root="$($BB findfs "$root" 2>/dev/null || $BB echo "/dev/disk/by-label/${root#LABEL=}")" ;;
+  UUID=*|LABEL=*) r="$($BB findfs "$root" 2>/dev/null)"; [ -n "$r" ] && root="$r" ;;
 esac
 
 log "root=$root type=$rootfstype ($rootflags)"
 
-# Wait for the root device to appear (slow USB/SATA enumeration).
+# Wait for the root device (slow USB/SATA enumeration); re-resolve LABEL each try.
 i=0
-while [ ! -b "$root" ] && [ "$i" -lt 30 ]; do
+while [ "$i" -lt 30 ]; do
+  case "$root" in
+    UUID=*|LABEL=*) r="$($BB findfs "$root" 2>/dev/null)"; [ -n "$r" ] && root="$r" ;;
+  esac
+  [ -b "$root" ] && break
   $BB sleep 1
   i=$((i + 1))
 done
 
-if [ ! -b "$root" ]; then
-  log "FATAL: root device $root not found. Dropping to a shell."
-  exec $BB sh
-fi
+[ -b "$root" ] || fail "root device '$root' not found after 30s"
 
 $BB mkdir -p /newroot
-if ! $BB mount -t "$rootfstype" -o "$rootflags" "$root" /newroot; then
-  log "FATAL: cannot mount $root. Dropping to a shell."
-  exec $BB sh
-fi
+$BB mount -t "$rootfstype" -o "$rootflags" "$root" /newroot \
+  || $BB mount "$root" /newroot \
+  || fail "cannot mount $root ($rootfstype)"
 
-# Hand over: move our pseudo-fs into the new root and switch_root to minit.
 for fs in proc sys dev; do
   $BB mkdir -p "/newroot/$fs"
   $BB mount --move "/$fs" "/newroot/$fs" 2>/dev/null
 done
 
-if [ ! -x /newroot/init ] && [ ! -x /newroot/sbin/init ]; then
-  log "FATAL: no /init on the new root. Dropping to a shell."
-  exec $BB sh
-fi
+[ -x /newroot/init ] || fail "no executable /init on the new root ($root)"
 
 log "switch_root -> /init"
 exec $BB switch_root /newroot /init
+fail "switch_root returned (this should never happen)"

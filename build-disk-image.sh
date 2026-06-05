@@ -18,15 +18,22 @@ ROOT_LABEL="${ROOT_LABEL:-minibashroot}"
 
 log() { printf '[minibash:diskimg] %s\n' "$*"; }
 
-for f in "$ROOTFS_TGZ" "$BOOT_INITRAMFS" "$KERNEL_IMAGE"; do
-  [ -f "$f" ] || { echo "missing artifact: $f (run build-disk.sh + fetch kernel first)" >&2; exit 1; }
-done
+[ -f "$ROOTFS_TGZ" ] || { echo "missing rootfs tarball: $ROOTFS_TGZ" >&2; exit 1; }
 
 # --- extract rootfs to a staging dir for mke2fs -d --------------------------
 ROOTDIR=/tmp/mb-root-extract
 rm -rf "$ROOTDIR"; mkdir -p "$ROOTDIR"
 log "extracting rootfs tarball"
 tar -xzf "$ROOTFS_TGZ" -C "$ROOTDIR"
+
+# --- boot: use the rootfs's OWN kernel + Debian initrd.img (udev auto-detects
+#     storage, so it boots on any controller) -------------------------------
+ver="$(ls "$ROOTDIR/lib/modules" | head -1)"
+KERNEL_IMAGE="${KERNEL_IMAGE_OVERRIDE:-$ROOTDIR/boot/vmlinuz-$ver}"
+INITRD_IMAGE="${INITRD_IMAGE_OVERRIDE:-$ROOTDIR/boot/initrd.img-$ver}"
+[ -f "$KERNEL_IMAGE" ] || { echo "no kernel /boot/vmlinuz-$ver in rootfs" >&2; exit 1; }
+[ -f "$INITRD_IMAGE" ] || { echo "no Debian initrd /boot/initrd.img-$ver in rootfs" >&2; exit 1; }
+log "kernel $ver + Debian initrd"
 
 # --- geometry ---------------------------------------------------------------
 esp_sectors=$((ESP_MB * 1024 * 1024 / 512))
@@ -69,14 +76,14 @@ search --no-floppy --label MINIBASHEFI --set=root
 
 menuentry "minibash-linux (disk root)" {
   search --no-floppy --label MINIBASHEFI --set=root
-  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw init=/init minibash.root=disk console=tty0 console=ttyS0,115200 panic=10 loglevel=4 minibash.tty=tty1 minibash.autologin=root minibash.keymap=fr
-  initrd /boot.cpio.gz
+  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw fsck.repair=yes init=/init minibash.root=disk iwlmvm.power_scheme=1 console=ttyS0,115200 console=tty0 panic=0 loglevel=4 minibash.tty=tty1 minibash.autologin=root minibash.keymap=fr
+  initrd /initrd.img
 }
 
 menuentry "minibash-linux (disk root, serial)" {
   search --no-floppy --label MINIBASHEFI --set=root
-  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw init=/init minibash.root=disk console=ttyS0,115200 panic=10 loglevel=4 minibash.tty=ttyS0 minibash.autologin=root minibash.keymap=fr
-  initrd /boot.cpio.gz
+  linux /kernel root=LABEL=${ROOT_LABEL} rootfstype=ext4 rw fsck.repair=yes init=/init minibash.root=disk iwlmvm.power_scheme=1 console=ttyS0,115200 panic=0 loglevel=7 minibash.tty=ttyS0 minibash.autologin=root minibash.keymap=fr
+  initrd /initrd.img
 }
 CFG
 
@@ -89,7 +96,7 @@ grub-mkstandalone \
 mcopy -i "$esp_img" "$bootefi" ::/EFI/BOOT/BOOTX64.EFI
 rm -f "$bootefi"
 mcopy -i "$esp_img" "$KERNEL_IMAGE" ::/kernel
-mcopy -i "$esp_img" "$BOOT_INITRAMFS" ::/boot.cpio.gz
+mcopy -i "$esp_img" "$INITRD_IMAGE" ::/initrd.img
 
 # --- assemble ---------------------------------------------------------------
 log "writing partitions into image"

@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# Build the DISK-ROOT root filesystem as a real, apt-capable Debian base
+# (debootstrap) with the minibash identity layered on top: minit as PID 1, the
+# bdb service database, minibash tools/services, SSH + WiFi pre-seeded.
+#
+# Unlike the RAM model (hand-copied files), this is a full Debian install on
+# disk -> heavy desktops (GNOME) become a live `apt install` over SSH afterwards.
+#
+# Output: $ROOTFS_TGZ (the disk root) + (reuses build-disk.sh's boot initramfs).
+set -euo pipefail
+
+DISTRO_DIR="${DISTRO_DIR:-/work/minibash-linux}"
+OUT_DIR="${OUT_DIR:-$DISTRO_DIR/out}"
+ROOTFS_TGZ="${ROOTFS_TGZ:-$OUT_DIR/minibash-rootfs.tar.gz}"
+CHROOT="${CHROOT:-/tmp/mb-debian-root}"
+SUITE="${SUITE:-trixie}"
+MIRROR="${MIRROR:-http://deb.debian.org/debian}"
+
+log() { printf '[minibash:debroot] %s\n' "$*"; }
+inchroot() { chroot "$CHROOT" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive "$@"; }
+
+# ---------------------------------------------------------------------------
+# 1. Minimal Debian base
+# ---------------------------------------------------------------------------
+log "debootstrap $SUITE -> $CHROOT"
+rm -rf "$CHROOT"
+mkdir -p "$CHROOT"
+debootstrap --variant=minbase \
+  --include=apt,ca-certificates,locales,kmod,util-linux,udev,dbus,bash,busybox,zstd \
+  "$SUITE" "$CHROOT" "$MIRROR"
+
+# bind mounts for apt inside the chroot
+mount -t proc proc "$CHROOT/proc"
+mount -t sysfs sysfs "$CHROOT/sys"
+mount -o bind /dev "$CHROOT/dev"
+mount -o bind /dev/pts "$CHROOT/dev/pts" 2>/dev/null || true
+cleanup() {
+  umount -l "$CHROOT/dev/pts" 2>/dev/null || true
+  umount -l "$CHROOT/dev" 2>/dev/null || true
+  umount -l "$CHROOT/sys" 2>/dev/null || true
+  umount -l "$CHROOT/proc" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# enable contrib/non-free for firmware
+cat > "$CHROOT/etc/apt/sources.list" <<EOF
+deb $MIRROR $SUITE main contrib non-free non-free-firmware
+EOF
+
+# Configure initramfs BEFORE installing linux-image-amd64. The kernel package
+# generates /boot/initrd.img during install; doing this later forced a second
+# expensive rebuild.
+mkdir -p "$CHROOT/etc/initramfs-tools/conf.d"
+{
+  echo 'MODULES=list'
+  echo 'COMPRESS=zstd'
+} > "$CHROOT/etc/initramfs-tools/conf.d/zz-minibash"
+cat > "$CHROOT/etc/initramfs-tools/modules" <<'EOF'
+# USB boot media
+xhci_hcd
+xhci_pci
+ehci_hcd
+uhci_hcd
+usb_storage
+uas
+
+# SATA / NVMe / SCSI disks
+ahci
+libahci
+nvme
+sd_mod
+scsi_mod
+
+# QEMU / virtio test boots
+virtio
+virtio_pci
+virtio_blk
+virtio_scsi
+
+# Filesystems used by the image
+ext4
+mbcache
+jbd2
+vfat
+fat
+nls_cp437
+nls_ascii
+nls_utf8
+EOF
+
+# ---------------------------------------------------------------------------
+# 2. Runtime packages (NOT GNOME yet — that goes in live over SSH)
+# ---------------------------------------------------------------------------
+log "installing base runtime (network, ssh, wifi, seat, gpu)"
+inchroot apt-get update
+inchroot apt-get install -y --no-install-recommends \
+  linux-image-amd64 \
+  network-manager wpasupplicant iw rfkill \
+  firmware-iwlwifi firmware-realtek firmware-atheros firmware-brcm80211 \
+  wireless-regdb firmware-misc-nonfree \
+  pciutils usbutils \
+  dropbear-bin openssh-client \
+  dbus elogind libpam-elogind \
+  seatd \
+  libgl1-mesa-dri libegl-mesa0 libgbm1 libegl1 libgles2 mesa-utils \
+  fonts-dejavu-core fontconfig \
+  sudo vim-tiny less iproute2 iputils-ping nano python3 \
+  procps psmisc \
+  build-essential cargo rustc zstd
+
+# ---------------------------------------------------------------------------
+# 2b. GNOME desktop (OPTIONAL). Off by default: the image stays lean and GNOME
+#     is installed live over SSH once networking is up (`apt install gnome-*`).
+#     Set INCLUDE_GNOME=1 to pre-bake it (real GNOME on a non-systemd box:
+#     elogind provides logind, lightdm is the display manager, pam_elogind opens
+#     the logind session mutter needs).
+# ---------------------------------------------------------------------------
+if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
+  log "installing GNOME desktop + lightdm (INCLUDE_GNOME=1)"
+  # lightdm is our display manager; pre-seed it so installing gnome (which pulls
+  # gdm3 as a recommend) doesn't grab the default.
+  echo "/usr/sbin/lightdm" > "$CHROOT/etc/X11/default-display-manager" 2>/dev/null || true
+  echo 'set shared/default-x-display-manager lightdm' | inchroot debconf-communicate >/dev/null 2>&1 || true
+  inchroot apt-get install -y \
+    gnome-session gnome-shell gnome-terminal gnome-control-center \
+    gnome-settings-daemon gnome-backgrounds nautilus \
+    lightdm lightdm-gtk-greeter \
+    xorg xwayland dbus-x11 \
+    adwaita-icon-theme fonts-cantarell \
+    network-manager-gnome
+  echo "/usr/sbin/lightdm" > "$CHROOT/etc/X11/default-display-manager"
+  # allow passwordless autologin for the minibash user
+  inchroot bash -c 'getent group nopasswdlogin >/dev/null || groupadd nopasswdlogin; usermod -aG nopasswdlogin,seat minibash 2>/dev/null || usermod -aG nopasswdlogin minibash'
+  inchroot apt-get clean
+else
+  log "GNOME skipped (INCLUDE_GNOME=0) — install it live over SSH later"
+fi
+
+# minit applies minibash.keymap=fr by feeding a binary keymap to BusyBox
+# loadkmap. The disk rootfs is Debian-based, so generate and wire that up here
+# instead of relying on the tiny initramfs build path.
+mkdir -p "$CHROOT/etc/keymaps"
+if command -v loadkeys >/dev/null 2>&1; then
+  log "generating AZERTY console keymap"
+  loadkeys -b fr > "$CHROOT/etc/keymaps/fr.bmap"
+else
+  log "loadkeys missing on builder; AZERTY keymap skipped"
+fi
+ln -sf /bin/busybox "$CHROOT/bin/loadkmap"
+
+# locale
+inchroot sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+inchroot locale-gen
+echo 'LANG=en_US.UTF-8' > "$CHROOT/etc/default/locale"
+
+# clean apt cache to shrink the rootfs
+inchroot apt-get clean
+rm -rf "$CHROOT"/var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# 3. minibash identity overlay
+# ---------------------------------------------------------------------------
+log "overlaying minibash (init, bdb, services, tools)"
+# minibash filesystem bits (services, tools, bdb seed, configs). We copy
+# selectively so we don't clobber Debian's system users/PAM/etc.
+for p in services bin/bdb bin/bashsvc bin/login bin/desktop bin/desktop-install \
+         bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
+         bin/netfix bin/wifidiag etc/minibash etc/shells etc/NetworkManager \
+         etc/lightdm etc/modprobe.d/iwl.conf etc/fstab; do
+  if [ -e "$DISTRO_DIR/rootfs/$p" ]; then
+    mkdir -p "$CHROOT/$(dirname "$p")"
+    # -T: merge INTO an existing dir (e.g. Debian's /etc/NetworkManager) instead
+    # of nesting it (which produced .../NetworkManager/NetworkManager/...).
+    cp -aT "$DISTRO_DIR/rootfs/$p" "$CHROOT/$p"
+  fi
+done
+cp -a "$DISTRO_DIR/rootfs/usr/share/udhcpc" "$CHROOT/usr/share/" 2>/dev/null || true
+
+# Desktop services in the bdb. With GNOME pre-baked, enable 'graphical' (and
+# disable the sway 'desktopd'). Without it, leave BOTH down -> clean console
+# boot; bring up a desktop later once it's apt-installed over SSH.
+inchroot python3 - "/etc/minibash/bdb/tables/services/data.tsv" "${INCLUDE_GNOME:-0}" <<'PY'
+import sys, base64
+F=sys.argv[1]; gnome = (len(sys.argv) > 2 and sys.argv[2] == '1')
+def b(s): return base64.b64encode(s.encode()).decode()
+def d(s): return base64.b64decode(s).decode()
+rows=[l.rstrip('\n').split('\t') for l in open(F) if l.strip()]
+have=False
+for r in rows:
+    n=d(r[0])
+    if n=='desktopd': r[2]=b('false'); r[4]=b('down')   # sway off
+    if n=='graphical':
+        have=True
+        r[2]=b('true' if gnome else 'false'); r[4]=b('up' if gnome else 'down')
+if gnome and not have:
+    rows.append([b('graphical'),b('/services/graphical.sh'),b('true'),b('true'),b('up'),b('stopped'),b('0'),b('GNOME desktop (lightdm+elogind)')])
+open(F,'w').write('\n'.join('\t'.join(r) for r in rows)+'\n')
+print('services:', ', '.join(d(r[0])+'='+d(r[4]) for r in rows if d(r[0]) in ('desktopd','graphical','netmgr','sshd')))
+PY
+
+# build minit (Rust) and install as /init
+log "building minit"
+rm -f "$DISTRO_DIR/rust/minit/Cargo.lock"
+( cd "$DISTRO_DIR/rust/minit" && cargo build --release )
+cp "$DISTRO_DIR/rust/minit/target/release/minit" "$CHROOT/init"
+chmod +x "$CHROOT/init"
+# bdbboot helper (boot summary)
+if [ -f "$DISTRO_DIR/rust/bdbboot/Cargo.toml" ]; then
+  ( cd "$DISTRO_DIR/rust/bdbboot" && cargo build --release ) || true
+  cp "$DISTRO_DIR/rust/bdbboot/target/release/bdbboot" "$CHROOT/bin/bdbboot" 2>/dev/null || true
+fi
+chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bashsvc \
+         "$CHROOT"/bin/login "$CHROOT"/bin/desktop "$CHROOT"/bin/gpu \
+         "$CHROOT"/bin/wifi "$CHROOT"/bin/netfix "$CHROOT"/bin/wifidiag 2>/dev/null || true
+
+# the minibash desktop user (non-root, for sway/GNOME) + groups
+inchroot bash -c 'id minibash >/dev/null 2>&1 || useradd -m -s /bin/bash -G video,input,render,audio,netdev minibash'
+# root + minibash SSH key
+mkdir -p "$CHROOT/root/.ssh"
+cp -a "$DISTRO_DIR/rootfs/root/.ssh/authorized_keys" "$CHROOT/root/.ssh/" 2>/dev/null || true
+chmod 700 "$CHROOT/root/.ssh"; chmod 600 "$CHROOT/root/.ssh/authorized_keys" 2>/dev/null || true
+# WiFi credentials (gitignored file) -> NetworkManager keyfile if present
+if [ -f "$DISTRO_DIR/rootfs/etc/wpa_supplicant.conf" ]; then
+  cp -a "$DISTRO_DIR/rootfs/etc/wpa_supplicant.conf" "$CHROOT/etc/wpa_supplicant.conf"
+fi
+
+# /etc/shells already shipped; ensure /bin/bash listed
+grep -q '^/bin/bash' "$CHROOT/etc/shells" 2>/dev/null || echo /bin/bash >> "$CHROOT/etc/shells"
+
+# ---------------------------------------------------------------------------
+# 4. pack the rootfs tarball
+# ---------------------------------------------------------------------------
+cleanup
+trap - EXIT
+log "packing disk rootfs tarball -> $ROOTFS_TGZ"
+tar --numeric-owner --owner=0 --group=0 -czf "$ROOTFS_TGZ" -C "$CHROOT" .
+ls -lh "$ROOTFS_TGZ"
+log "done. boot initramfs: run build-disk.sh with SKIP_ROOTFS to (re)build it, then build-disk-image.sh"

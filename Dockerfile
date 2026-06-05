@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 debian:bookworm
+FROM --platform=linux/amd64 debian:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -15,9 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     console-data \
     cpio \
+    debootstrap \
     dosfstools \
     dropbear-bin \
     dwarves \
+    e2fsprogs \
     fdisk \
     file \
     findutils \
@@ -46,6 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     mtools \
     ovmf \
+    python3 \
     qemu-system-x86 \
     rsync \
     cargo \
@@ -61,6 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     weston \
     xorriso \
     xz-utils \
+    zstd \
   && rm -rf /var/lib/apt/lists/*
 
 # foot (and any terminal) refuses to start without a UTF-8 locale; generate a

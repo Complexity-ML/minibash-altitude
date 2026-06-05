@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -u
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+section() { printf '\n== %s ==\n' "$*"; }
+run() {
+  printf '+ %s\n' "$*"
+  "$@" 2>&1 || true
+}
+
+section "minibash"
+run cat /proc/cmdline
+run uname -a
+run ls -l /bin/netfix /services/netmgr.sh /etc/keymaps/fr.bmap /bin/loadkmap
+
+section "hardware"
+run lspci -nn
+run lsusb
+
+section "kernel modules"
+run lsmod
+run find /sys/class/net -maxdepth 2 -type d
+
+section "rfkill"
+run rfkill list
+run rfkill unblock all
+
+section "firmware + wifi dmesg"
+dmesg 2>/dev/null | grep -Ei 'firmware|wifi|wlan|80211|iwlwifi|iwlmvm|rtw|rtl|ath|brcm|mt76|mt792|cfg80211|mac80211' | tail -120 || true
+
+section "load common wifi modules"
+for mod in \
+  cfg80211 mac80211 rfkill \
+  iwlwifi iwlmvm iwldvm \
+  rtw88_core rtw88_pci rtw89_core rtw89_pci rtl8xxxu \
+  ath9k ath10k_pci ath11k_pci \
+  brcmfmac brcmsmac \
+  mt76 mt7921e mt7921u mt7925e; do
+  modprobe "$mod" 2>/dev/null && echo "loaded $mod" || true
+done
+
+section "network interfaces"
+run ip link
+for dev in /sys/class/net/*; do
+  [ -d "$dev/wireless" ] || continue
+  iface="$(basename "$dev")"
+  echo "wifi interface: $iface"
+  run ip link set "$iface" up
+  run iw dev "$iface" info
+  run iw dev "$iface" scan
+done
+
+section "NetworkManager"
+mkdir -p /etc/NetworkManager/conf.d /run/dbus /run/NetworkManager /var/lib/NetworkManager
+cat > /etc/NetworkManager/NetworkManager.conf <<'EOF'
+[main]
+plugins=keyfile
+
+[ifupdown]
+managed=true
+
+[keyfile]
+unmanaged-devices=none
+EOF
+cat > /etc/NetworkManager/conf.d/10-minibash.conf <<'EOF'
+[main]
+plugins=keyfile
+
+[ifupdown]
+managed=true
+
+[keyfile]
+unmanaged-devices=none
+
+[device-wifi]
+match-device=type:wifi
+managed=1
+
+[device-ethernet]
+match-device=type:ethernet
+managed=1
+EOF
+[ -S /run/dbus/system_bus_socket ] || dbus-daemon --system --fork 2>/dev/null || true
+pgrep -x NetworkManager >/dev/null 2>&1 || NetworkManager --no-daemon >/var/log/NetworkManager-live.log 2>&1 &
+sleep 4
+run nmcli general
+run nmcli radio all
+run nmcli device status
+run nmcli device wifi list
+
+section "logs"
+run tail -80 /var/log/netmgr.log
+run tail -80 /var/log/NetworkManager-live.log
