@@ -30,6 +30,30 @@ lookup_user() {
     | awk -F'\t' -v u="$1" '$1 == u { print; exit }'
 }
 
+crypt_sha512() {
+  local salt="$1" password="$2"
+  command -v openssl >/dev/null 2>&1 || return 1
+  openssl passwd -6 -salt "$salt" "$password" 2>/dev/null
+}
+
+verify_password() {
+  local password="$1" stored="$2" salt calc
+  case "$stored" in
+    '$6$'*)
+      salt="${stored#\$6\$}"
+      salt="${salt%%\$*}"
+      [ -n "$salt" ] || return 1
+      calc="$(crypt_sha512 "$salt" "$password" || true)"
+      [ "$calc" = "$stored" ]
+      ;;
+    *)
+      # Legacy development images stored plaintext in bdb. Keep this fallback
+      # so old disks can still be entered once and upgraded with passwd.
+      [ "$password" = "$stored" ]
+      ;;
+  esac
+}
+
 banner() {
   printf '\n%s %s (console)\n\n' "$HOSTNAME" "$VERSION"
 }
@@ -84,9 +108,10 @@ while true; do
     printf 'Password: '
     read -rs password || { echo; continue; }
     echo
-    if [ "$password" != "$u_pw" ]; then
+    if ! verify_password "$password" "$u_pw"; then
       echo 'Login incorrect'; sleep 1; continue
     fi
+    unset password
   fi
 
   start_session "$u_name" "$u_shell" "$u_home"

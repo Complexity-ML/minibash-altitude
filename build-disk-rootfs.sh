@@ -26,7 +26,7 @@ log "debootstrap $SUITE -> $CHROOT"
 rm -rf "$CHROOT"
 mkdir -p "$CHROOT"
 debootstrap --variant=minbase \
-  --include=apt,ca-certificates,locales,kmod,util-linux,udev,dbus,bash,busybox,zstd \
+  --include=apt,ca-certificates,locales,kmod,util-linux,udev,dbus,bash,busybox,zstd,openssl \
   "$SUITE" "$CHROOT" "$MIRROR"
 
 # bind mounts for apt inside the chroot
@@ -128,7 +128,8 @@ if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
     xorg xwayland dbus-x11 \
     adwaita-icon-theme fonts-cantarell \
     network-manager-gnome yad zenity \
-    polkitd upower rtkit accountsservice
+    polkitd upower rtkit accountsservice \
+    xdg-desktop-portal xdg-desktop-portal-gtk udisks2
   echo "/usr/sbin/lightdm" > "$CHROOT/etc/X11/default-display-manager"
   # allow passwordless autologin for the minibash user
   inchroot bash -c 'getent group nopasswdlogin >/dev/null || groupadd nopasswdlogin; usermod -aG nopasswdlogin,seat minibash 2>/dev/null || usermod -aG nopasswdlogin minibash'
@@ -164,11 +165,11 @@ rm -rf "$CHROOT"/var/lib/apt/lists/*
 log "overlaying minibash (init, bdb, services, tools)"
 # minibash filesystem bits (services, tools, bdb seed, configs). We copy
 # selectively so we don't clobber Debian's system users/PAM/etc.
-for p in services bin/bdb bin/bashsvc bin/login bin/desktop bin/desktop-install \
+for p in services bin/bdb bin/bdb.bash bin/bdbql bin/bdbsh bin/bashsvc bin/login bin/passwd bin/desktop bin/desktop-install \
          bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
-         bin/netfix bin/wifidiag bin/minibash-services \
+         bin/netfix bin/wifidiag bin/minibash-services bin/minibash-desktop-warmup \
          etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/sudoers.d \
-         etc/modprobe.d/iwl.conf etc/fstab usr/share/applications; do
+         etc/modprobe.d/iwl.conf etc/fstab etc/xdg usr/share/applications usr/src/minibash; do
   if [ -e "$DISTRO_DIR/rootfs/$p" ]; then
     mkdir -p "$CHROOT/$(dirname "$p")"
     # -T: merge INTO an existing dir (e.g. Debian's /etc/NetworkManager) instead
@@ -177,6 +178,11 @@ for p in services bin/bdb bin/bashsvc bin/login bin/desktop bin/desktop-install 
   fi
 done
 cp -a "$DISTRO_DIR/rootfs/usr/share/udhcpc" "$CHROOT/usr/share/" 2>/dev/null || true
+
+if [ -f "$CHROOT/usr/src/minibash/bdbc.c" ]; then
+  log "building bdbc (C bdb engine)"
+  inchroot gcc -O2 -Wall -Wextra -o /bin/bdbc /usr/src/minibash/bdbc.c
+fi
 
 # Desktop services in the bdb. With GNOME pre-baked, enable 'graphical' (and
 # disable the sway 'desktopd'). Without it, leave BOTH down -> clean console
@@ -188,7 +194,7 @@ def b(s): return base64.b64encode(s.encode()).decode()
 def d(s): return base64.b64decode(s).decode()
 rows=[l.rstrip('\n').split('\t') for l in open(F) if l.strip()]
 have=False
-desktop_services={'dbus','elogind','polkit','upower','rtkit','accounts','graphical'}
+desktop_services={'dbus','elogind','polkit','upower','rtkit','accounts','displayd','portald','udisksd','graphical'}
 for r in rows:
     n=d(r[0])
     if n=='desktopd': r[2]=b('false'); r[4]=b('down')   # sway off
@@ -214,10 +220,10 @@ if [ -f "$DISTRO_DIR/rust/bdbboot/Cargo.toml" ]; then
   ( cd "$DISTRO_DIR/rust/bdbboot" && cargo build --release ) || true
   cp "$DISTRO_DIR/rust/bdbboot/target/release/bdbboot" "$CHROOT/bin/bdbboot" 2>/dev/null || true
 fi
-chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bashsvc \
-         "$CHROOT"/bin/login "$CHROOT"/bin/desktop "$CHROOT"/bin/gpu \
+chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bdb.bash "$CHROOT"/bin/bdbql "$CHROOT"/bin/bdbsh "$CHROOT"/bin/bashsvc \
+         "$CHROOT"/bin/login "$CHROOT"/bin/passwd "$CHROOT"/bin/desktop "$CHROOT"/bin/gpu \
          "$CHROOT"/bin/wifi "$CHROOT"/bin/netfix "$CHROOT"/bin/wifidiag \
-         "$CHROOT"/bin/minibash-services 2>/dev/null || true
+         "$CHROOT"/bin/minibash-services "$CHROOT"/bin/minibash-desktop-warmup 2>/dev/null || true
 chmod 440 "$CHROOT"/etc/sudoers.d/* 2>/dev/null || true
 
 # the minibash desktop user (non-root, for sway/GNOME) + groups

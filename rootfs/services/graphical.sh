@@ -7,6 +7,11 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 exec >>/var/log/graphical.log 2>&1
 
 log() { echo "graphical: $* ($(date 2>/dev/null))"; }
+cleanup() {
+  log "stopping lightdm session"
+  killall gnome-session-failed gnome-session-binary gnome-shell lightdm Xorg 2>/dev/null || true
+}
+trap cleanup TERM INT
 
 # GPU drivers (udev does not cold-plug them here)
 for m in i915 amdgpu radeon nouveau virtio_gpu simpledrm; do modprobe "$m" 2>/dev/null || true; done
@@ -22,6 +27,7 @@ mkdir -p /run/dbus /run/elogind /run/lightdm /var/lib/lightdm /var/lib/lightdm-d
 # bad ownership here makes GNOME exit immediately with status 13.
 if id minibash >/dev/null 2>&1; then
   mkdir -p /home/minibash/.config /home/minibash/.local/share /run/user/1000 /tmp/.ICE-unix /tmp/.X11-unix
+  mkdir -p /home/minibash/.config/autostart
   chown -R minibash:minibash /home/minibash /run/user/1000
   chmod 755 /home/minibash
   chmod 700 /run/user/1000
@@ -38,35 +44,24 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export XDG_SESSION_TYPE=x11
 export GDK_BACKEND=x11
 export LIBGL_ALWAYS_SOFTWARE=1
-xrandr --output eDP-1 --primary --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal 2>/dev/null || true
-exec dbus-run-session -- gnome-session
+export GTK_A11Y=none
+xset dpms force on 2>/dev/null || true
+xset s off -dpms 2>/dev/null || true
+xrandr --output eDP-1 --primary --auto --preferred --pos 0x0 --rotate normal 2>/dev/null || true
+exec dbus-run-session -- sh -c '
+  gsettings set org.gnome.desktop.session idle-delay 0 >/dev/null 2>&1 || true
+  gsettings set org.gnome.desktop.screensaver lock-enabled false >/dev/null 2>&1 || true
+  gsettings set org.gnome.desktop.interface color-scheme prefer-dark >/dev/null 2>&1 || true
+  gsettings set org.gnome.desktop.background picture-options none >/dev/null 2>&1 || true
+  gsettings set org.gnome.desktop.background primary-color "#101418" >/dev/null 2>&1 || true
+  gsettings set org.gnome.shell favorite-apps "['\''org.gnome.Nautilus.desktop'\'', '\''minibash-services.desktop'\'']" >/dev/null 2>&1 || true
+  exec gnome-session
+'
 EOF
-  cat > /home/minibash/.config/monitors.xml <<'EOF'
-<monitors version="2">
-  <configuration>
-    <logicalmonitor>
-      <x>0</x>
-      <y>0</y>
-      <scale>1</scale>
-      <primary>yes</primary>
-      <monitor>
-        <monitorspec>
-          <connector>eDP-1</connector>
-          <vendor>unknown</vendor>
-          <product>unknown</product>
-          <serial>unknown</serial>
-        </monitorspec>
-        <mode>
-          <width>1920</width>
-          <height>1080</height>
-          <rate>60.000</rate>
-        </mode>
-      </monitor>
-    </logicalmonitor>
-  </configuration>
-</monitors>
-EOF
-  chown minibash:minibash /home/minibash/.xsessionrc /home/minibash/.xsession /home/minibash/.config/monitors.xml
+  cp /etc/xdg/autostart/minibash-services.desktop /home/minibash/.config/autostart/minibash-services.desktop 2>/dev/null || true
+  rm -f /home/minibash/.config/monitors.xml
+  chown -R minibash:minibash /home/minibash/.config/autostart
+  chown minibash:minibash /home/minibash/.xsessionrc /home/minibash/.xsession
   chmod +x /home/minibash/.xsession
 fi
 

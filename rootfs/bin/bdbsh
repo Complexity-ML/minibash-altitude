@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Interactive BDBQL shell.
+set -euo pipefail
+
+BDBQL="${BDBQL_BIN:-/bin/bdbql}"
+buffer=""
+
+printf 'BDBQL 0.1 - minibash database shell\n'
+printf 'Type HELP; or EXIT;\n'
+
+while true; do
+  if [ -z "$buffer" ]; then
+    printf 'bdb> '
+  else
+    printf '   > '
+  fi
+  IFS= read -r line || break
+  case "${line,,}" in
+    exit|exit\;|quit|quit\;) break ;;
+    help|help\;)
+      printf 'SHOW TABLES; DESC table; SELECT * FROM table [WHERE col=value];\n'
+      printf 'INSERT INTO table (cols) VALUES (vals); UPDATE table SET col=value WHERE col=value;\n'
+      printf 'DELETE FROM table WHERE col=value; START/STOP/ENABLE/DISABLE SERVICE name;\n'
+      continue
+      ;;
+  esac
+  buffer="${buffer}${line}"
+  if [[ "$buffer" == *';' ]]; then
+    "$BDBQL" "$buffer" || true
+    buffer=""
+  else
+    buffer="${buffer} "
+  fi
+done

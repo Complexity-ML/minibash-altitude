@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=minibash desktop warmup
+Exec=/bin/minibash-desktop-warmup
+Terminal=false
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=GNOME;Unity;XFCE;
+Categories=System;Utility;

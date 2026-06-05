@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -u
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+
+fix_screen() {
+  xset dpms force on >/tmp/minibash-desktop-warmup.log 2>&1 || true
+  xset s off -dpms >>/tmp/minibash-desktop-warmup.log 2>&1 || true
+  xrandr --output eDP-1 --primary --auto --preferred --pos 0x0 --rotate normal >>/tmp/minibash-desktop-warmup.log 2>&1 || true
+  gsettings set org.gnome.desktop.session idle-delay 0 >/dev/null 2>&1 || true
+  gsettings set org.gnome.desktop.screensaver lock-enabled false >/dev/null 2>&1 || true
+}
+
+for delay in 1 2 4 8; do
+  sleep "$delay"
+  fix_screen
+done
+
+exit 0

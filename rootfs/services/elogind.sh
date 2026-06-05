@@ -9,7 +9,7 @@ if pgrep -x elogind >/dev/null 2>&1; then
   exec sleep infinity
 fi
 
-for e in /lib/elogind/elogind /usr/lib/elogind/elogind /usr/libexec/elogind/elogind; do
+for e in /usr/libexec/elogind /lib/elogind/elogind /usr/lib/elogind/elogind /usr/libexec/elogind/elogind; do
   if [ -x "$e" ]; then
     echo "elogind: starting $e"
     exec "$e"
