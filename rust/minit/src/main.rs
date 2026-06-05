@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom};
 use std::os::raw::{c_char, c_int, c_ulong, c_void};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -419,45 +419,12 @@ fn seed_db(persistent: bool) {
 // bdb access, in-process
 // ----------------------------------------------------------------------------
 // minit reads and writes the bdb tables directly in Rust. The alternative -
-// forking /bin/bdb for every status update and log line - spawns `base64` once
-// per field and serialises everything on bdb's global lock; under TCG emulation
-// that storm of processes stalls the supervisor. Doing it in-process keeps the
+// forking /bin/bdb for every status update and log line serialises everything
+// on bdb's global lock; under TCG emulation that process churn stalls the supervisor. Doing it in-process keeps the
 // lock held for microseconds and never blocks a worker thread on a fork.
 //
 // We honour bdb's own lock convention (mkdir of $BDB_PATH/.lock) so the `bdb`
 // CLI used by bashsvc and the operator stays mutually exclusive with us.
-
-fn b64encode(s: &str) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let b = s.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i + 3 <= b.len() {
-        let n = ((b[i] as u32) << 16) | ((b[i + 1] as u32) << 8) | (b[i + 2] as u32);
-        out.push(T[((n >> 18) & 63) as usize] as char);
-        out.push(T[((n >> 12) & 63) as usize] as char);
-        out.push(T[((n >> 6) & 63) as usize] as char);
-        out.push(T[(n & 63) as usize] as char);
-        i += 3;
-    }
-    match b.len() - i {
-        1 => {
-            let n = (b[i] as u32) << 16;
-            out.push(T[((n >> 18) & 63) as usize] as char);
-            out.push(T[((n >> 12) & 63) as usize] as char);
-            out.push_str("==");
-        }
-        2 => {
-            let n = ((b[i] as u32) << 16) | ((b[i + 1] as u32) << 8);
-            out.push(T[((n >> 18) & 63) as usize] as char);
-            out.push(T[((n >> 12) & 63) as usize] as char);
-            out.push(T[((n >> 6) & 63) as usize] as char);
-            out.push('=');
-        }
-        _ => {}
-    }
-    out
-}
 
 fn db_lock() -> bool {
     let lock = format!("{BDB_PATH}/.lock");
@@ -480,29 +447,21 @@ fn set_service_fields(name: &str, updates: &[(usize, &str)]) {
     if !db_lock() {
         return;
     }
-    let path = format!("{BDB_PATH}/tables/services/data.tsv");
-    if let Ok(raw) = fs::read_to_string(&path) {
-        let want = b64encode(name);
-        let mut out = String::new();
+    let path = format!("{BDB_PATH}/tables/services/data.bdb");
+    if let Some(mut rows) = read_bdb_rows(&path, 8) {
         let mut changed = false;
-        for line in raw.lines() {
-            let mut fields: Vec<String> = line.split('\t').map(|s| s.to_string()).collect();
-            if fields.len() >= 8 && fields[0] == want {
+        for fields in rows.iter_mut() {
+            if fields.len() >= 8 && fields[0] == name {
                 for (idx, val) in updates {
                     if *idx < fields.len() {
-                        fields[*idx] = b64encode(val);
+                        fields[*idx] = (*val).to_string();
                     }
                 }
                 changed = true;
             }
-            out.push_str(&fields.join("\t"));
-            out.push('\n');
         }
         if changed {
-            let tmp = format!("{BDB_PATH}/tables/services/.data.tmp");
-            if fs::write(&tmp, out).is_ok() {
-                let _ = fs::rename(&tmp, &path);
-            }
+            let _ = write_bdb_rows(&path, 8, &rows);
         }
     }
     db_unlock();
@@ -512,73 +471,80 @@ fn append_log(service: &str, line: &str) {
     if !db_lock() {
         return;
     }
-    let path = format!("{BDB_PATH}/tables/logs/data.tsv");
-    let row = format!(
-        "{}\t{}\t{}\n",
-        b64encode(&now_ts()),
-        b64encode(service),
-        b64encode(line)
-    );
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = f.write_all(row.as_bytes());
+    let path = format!("{BDB_PATH}/tables/logs/data.bdb");
+    let mut rows = read_bdb_rows(&path, 3).unwrap_or_default();
+    rows.push(vec![now_ts(), service.to_string(), line.to_string()]);
+    if rows.len() > 4096 {
+        rows.drain(0..rows.len() - 4096);
     }
+    let _ = write_bdb_rows(&path, 3, &rows);
     db_unlock();
 }
 
-// Minimal base64 decoder (no crates), so the hot reconcile loop can read the
-// services table directly.
-fn b64decode(input: &str) -> Option<String> {
-    let mut out: Vec<u8> = Vec::new();
-    let mut quartet = [0u8; 4];
-    let mut n = 0;
-    for b in input.bytes() {
-        let v = match b {
-            b'A'..=b'Z' => b - b'A',
-            b'a'..=b'z' => b - b'a' + 26,
-            b'0'..=b'9' => b - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            b'=' => 64,
-            b'\n' | b'\r' | b' ' => continue,
-            _ => return None,
-        };
-        quartet[n] = v;
-        n += 1;
-        if n == 4 {
-            out.push((quartet[0] << 2) | (quartet[1] >> 4));
-            if quartet[2] != 64 {
-                out.push((quartet[1] << 4) | (quartet[2] >> 2));
-            }
-            if quartet[3] != 64 {
-                out.push((quartet[2] << 6) | quartet[3]);
-            }
-            n = 0;
-        }
-    }
-    String::from_utf8(out).ok()
+fn read_u32(buf: &[u8], off: &mut usize) -> Option<u32> {
+    let bytes = buf.get(*off..*off + 4)?;
+    *off += 4;
+    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
-// Read the services table straight from disk (base64 TSV), decoding in-process.
+fn read_bdb_rows(path: &str, expected_cols: usize) -> Option<Vec<Vec<String>>> {
+    let buf = fs::read(path).ok()?;
+    let mut off = 0usize;
+    if buf.get(0..4)? != b"BDB1" {
+        return None;
+    }
+    off += 4;
+    let version = read_u32(&buf, &mut off)?;
+    let cols = read_u32(&buf, &mut off)? as usize;
+    let rows = read_u32(&buf, &mut off)? as usize;
+    if version != 1 || cols != expected_cols {
+        return None;
+    }
+    let mut out = Vec::with_capacity(rows);
+    for _ in 0..rows {
+        let mut row = Vec::with_capacity(cols);
+        for _ in 0..cols {
+            let len = read_u32(&buf, &mut off)? as usize;
+            let bytes = buf.get(off..off + len)?;
+            off += len;
+            row.push(String::from_utf8_lossy(bytes).into_owned());
+        }
+        out.push(row);
+    }
+    Some(out)
+}
+
+fn write_u32(out: &mut Vec<u8>, value: u32) {
+    out.extend_from_slice(&value.to_le_bytes());
+}
+
+fn write_bdb_rows(path: &str, cols: usize, rows: &[Vec<String>]) -> std::io::Result<()> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"BDB1");
+    write_u32(&mut out, 1);
+    write_u32(&mut out, cols as u32);
+    write_u32(&mut out, rows.len() as u32);
+    for row in rows {
+        for idx in 0..cols {
+            let value = row.get(idx).map(String::as_str).unwrap_or("");
+            write_u32(&mut out, value.len() as u32);
+            out.extend_from_slice(value.as_bytes());
+        }
+    }
+    let tmp = format!("{path}.tmp");
+    fs::write(&tmp, out)?;
+    fs::rename(tmp, path)
+}
+
+// Read the services table straight from native bdb.
 fn read_services() -> Vec<Service> {
-    let raw = match fs::read_to_string(format!("{BDB_PATH}/tables/services/data.tsv")) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
+    let rows = match read_bdb_rows(&format!("{BDB_PATH}/tables/services/data.bdb"), 8) {
+        Some(rows) => rows,
+        None => return Vec::new(),
     };
     let mut out = Vec::new();
-    for line in raw.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        let fields: Vec<&str> = line.split('\t').collect();
-        if fields.len() < 8 {
-            continue;
-        }
-        // columns: name command autostart restart desired status pid description
-        let dec: Option<Vec<String>> = fields.iter().map(|f| b64decode(f)).collect();
-        let f = match dec {
-            Some(v) => v,
-            None => continue,
-        };
+    for f in rows {
+        if f.len() < 8 { continue; }
         let desired = if f[0] == "desktopd" && desktop_autostart_disabled() {
             "down".to_string()
         } else {

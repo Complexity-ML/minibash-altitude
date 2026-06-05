@@ -16,8 +16,8 @@ struct Service {
 fn main() {
     println!("[bdbboot:rust] Linux+Bash+bdb hybrid boot helper");
 
-    let path = "/var/bdb/tables/services/data.tsv";
-    let data = match fs::read_to_string(path) {
+    let path = "/var/bdb/tables/services/data.bdb";
+    let services = match read_bdb_rows(path, 8) {
         Ok(data) => data,
         Err(err) => {
             println!("[bdbboot:rust] cannot read {path}: {err}");
@@ -25,10 +25,7 @@ fn main() {
         }
     };
 
-    let services: Vec<Service> = data
-        .lines()
-        .filter_map(parse_service)
-        .collect();
+    let services: Vec<Service> = services.into_iter().filter_map(parse_service).collect();
 
     println!("[bdbboot:rust] {} services loaded from bdb", services.len());
     for service in services {
@@ -46,13 +43,7 @@ fn main() {
     }
 }
 
-fn parse_service(line: &str) -> Option<Service> {
-    let fields: Vec<String> = line
-        .split('\t')
-        .map(decode_b64)
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-
+fn parse_service(fields: Vec<String>) -> Option<Service> {
     if fields.len() < 8 {
         return None;
     }
@@ -69,35 +60,38 @@ fn parse_service(line: &str) -> Option<Service> {
     })
 }
 
-fn decode_b64(input: &str) -> Result<String, String> {
-    let mut out = Vec::new();
-    let mut quartet = [0u8; 4];
-    let mut q_len = 0;
+fn read_u32(buf: &[u8], off: &mut usize) -> Option<u32> {
+    let bytes = buf.get(*off..*off + 4)?;
+    *off += 4;
+    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
 
-    for byte in input.bytes() {
-        quartet[q_len] = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            b'=' => 64,
-            b'\n' | b'\r' | b' ' => continue,
-            _ => return Err(format!("invalid base64 byte: {byte}")),
-        };
-        q_len += 1;
-
-        if q_len == 4 {
-            out.push((quartet[0] << 2) | (quartet[1] >> 4));
-            if quartet[2] != 64 {
-                out.push((quartet[1] << 4) | (quartet[2] >> 2));
-            }
-            if quartet[3] != 64 {
-                out.push((quartet[2] << 6) | quartet[3]);
-            }
-            q_len = 0;
-        }
+fn read_bdb_rows(path: &str, expected_cols: usize) -> Result<Vec<Vec<String>>, std::io::Error> {
+    let buf = fs::read(path)?;
+    let mut off = 0usize;
+    if buf.get(0..4) != Some(b"BDB1") {
+        return Ok(Vec::new());
     }
-
-    String::from_utf8(out).map_err(|err| err.to_string())
+    off += 4;
+    let version = read_u32(&buf, &mut off).unwrap_or(0);
+    let cols = read_u32(&buf, &mut off).unwrap_or(0) as usize;
+    let rows = read_u32(&buf, &mut off).unwrap_or(0) as usize;
+    if version != 1 || cols != expected_cols {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::with_capacity(rows);
+    for _ in 0..rows {
+        let mut row = Vec::with_capacity(cols);
+        for _ in 0..cols {
+            let len = read_u32(&buf, &mut off).unwrap_or(0) as usize;
+            let bytes = match buf.get(off..off + len) {
+                Some(bytes) => bytes,
+                None => return Ok(Vec::new()),
+            };
+            off += len;
+            row.push(String::from_utf8_lossy(bytes).into_owned());
+        }
+        out.push(row);
+    }
+    Ok(out)
 }

@@ -165,7 +165,7 @@ rm -rf "$CHROOT"/var/lib/apt/lists/*
 log "overlaying minibash (init, bdb, services, tools)"
 # minibash filesystem bits (services, tools, bdb seed, configs). We copy
 # selectively so we don't clobber Debian's system users/PAM/etc.
-for p in services bin/bdb bin/bdb.bash bin/bdbql bin/bdbsh bin/bashsvc bin/login bin/passwd bin/desktop bin/desktop-install \
+for p in services bin/bdb bin/bdbql bin/bdbsh bin/bashsvc bin/login bin/passwd bin/desktop bin/desktop-install \
          bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
          bin/netfix bin/wifidiag bin/minibash-services bin/minibash-desktop-warmup \
          etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/sudoers.d \
@@ -184,30 +184,20 @@ if [ -f "$CHROOT/usr/src/minibash/bdbc.c" ]; then
   inchroot gcc -O2 -Wall -Wextra -o /bin/bdbc /usr/src/minibash/bdbc.c
 fi
 
-# Desktop services in the bdb. With GNOME pre-baked, enable 'graphical' (and
-# disable the sway 'desktopd'). Without it, leave BOTH down -> clean console
-# boot; bring up a desktop later once it's apt-installed over SSH.
-inchroot python3 - "/etc/minibash/bdb/tables/services/data.tsv" "${INCLUDE_GNOME:-0}" <<'PY'
-import sys, base64
-F=sys.argv[1]; gnome = (len(sys.argv) > 2 and sys.argv[2] == '1')
-def b(s): return base64.b64encode(s.encode()).decode()
-def d(s): return base64.b64decode(s).decode()
-rows=[l.rstrip('\n').split('\t') for l in open(F) if l.strip()]
-have=False
-desktop_services={'dbus','elogind','polkit','upower','rtkit','accounts','displayd','portald','udisksd','graphical'}
-for r in rows:
-    n=d(r[0])
-    if n=='desktopd': r[2]=b('false'); r[4]=b('down')   # sway off
-    if n in desktop_services:
-        r[2]=b('true' if gnome else 'false')
-        r[4]=b('up' if gnome else 'down')
-    if n=='graphical':
-        have=True
-if gnome and not have:
-    rows.append([b('graphical'),b('/services/graphical.sh'),b('true'),b('true'),b('up'),b('stopped'),b('0'),b('GNOME desktop (lightdm+elogind)')])
-open(F,'w').write('\n'.join('\t'.join(r) for r in rows)+'\n')
-print('services:', ', '.join(d(r[0])+'='+d(r[4]) for r in rows if d(r[0]) in ('desktopd','graphical','netmgr','sshd')))
-PY
+# Desktop services in the native bdb. With GNOME pre-baked, enable graphical
+# services. Without it, leave them down for a clean console boot.
+desktop_services="dbus elogind polkit upower rtkit accounts displayd portald udisksd graphical"
+inchroot /bin/bdbc update services --where name=desktopd autostart=false desired=down >/dev/null || true
+if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
+  for svc in $desktop_services; do
+    inchroot /bin/bdbc update services --where "name=$svc" autostart=true desired=up >/dev/null || true
+  done
+else
+  for svc in $desktop_services; do
+    inchroot /bin/bdbc update services --where "name=$svc" autostart=false desired=down >/dev/null || true
+  done
+fi
+inchroot /bin/bdbc select services --where name=graphical || true
 
 # build minit (Rust) and install as /init
 log "building minit"
@@ -220,7 +210,7 @@ if [ -f "$DISTRO_DIR/rust/bdbboot/Cargo.toml" ]; then
   ( cd "$DISTRO_DIR/rust/bdbboot" && cargo build --release ) || true
   cp "$DISTRO_DIR/rust/bdbboot/target/release/bdbboot" "$CHROOT/bin/bdbboot" 2>/dev/null || true
 fi
-chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bdb.bash "$CHROOT"/bin/bdbql "$CHROOT"/bin/bdbsh "$CHROOT"/bin/bashsvc \
+chmod +x "$CHROOT"/services/*.sh "$CHROOT"/bin/bdb "$CHROOT"/bin/bdbql "$CHROOT"/bin/bdbsh "$CHROOT"/bin/bashsvc \
          "$CHROOT"/bin/login "$CHROOT"/bin/passwd "$CHROOT"/bin/desktop "$CHROOT"/bin/gpu \
          "$CHROOT"/bin/wifi "$CHROOT"/bin/netfix "$CHROOT"/bin/wifidiag \
          "$CHROOT"/bin/minibash-services "$CHROOT"/bin/minibash-desktop-warmup 2>/dev/null || true

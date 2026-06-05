@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
-# bdb front controller.
-#
-# Default engine: C (`/bin/bdbc`) for the hot path.
-# Fallback engine: Bash (`/bin/bdb.bash`) for portability and SQL parser work.
+# bdb front controller. Runtime storage is native BDB only.
 set -euo pipefail
 
-ENGINE="${BDB_ENGINE:-auto}"
-
-if [ "$ENGINE" != "bash" ] && [ -x /bin/bdbc ]; then
+if [ -x /bin/bdbc ]; then
   case "${1:-}" in
-    init|create|tables|schema|insert|select|dump|update|delete|drop|pack|version|--version)
+    init|create|tables|schema|insert|select|dump|update|delete|drop|version|--version)
       exec /bin/bdbc "$@"
       ;;
   esac
@@ -22,4 +17,5 @@ case "${1:-}" in
     ;;
 esac
 
-exec /bin/bdb.bash "$@"
+echo "bdb: commande inconnue: ${1:-}" >&2
+exit 64
