@@ -1,0 +1,15 @@
+polkit.addRule(function(action, subject) {
+  if (!subject.isInGroup("netdev") && subject.user !== "minibash") {
+    return polkit.Result.NOT_HANDLED;
+  }
+
+  if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 ||
+      action.id.indexOf("org.freedesktop.login1.") === 0 ||
+      action.id.indexOf("org.freedesktop.udisks2.") === 0 ||
+      action.id.indexOf("org.freedesktop.upower.") === 0 ||
+      action.id.indexOf("org.gnome.controlcenter.") === 0) {
+    return polkit.Result.YES;
+  }
+
+  return polkit.Result.NOT_HANDLED;
+});

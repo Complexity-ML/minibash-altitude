@@ -168,7 +168,7 @@ log "overlaying minibash (init, bdb, services, tools)"
 for p in services bin/bdb bin/bdbql bin/bdbsh bin/bashsvc bin/login bin/passwd bin/desktop bin/desktop-install \
          bin/pkg bin/minibash-install bin/minibash-update bin/gpu bin/wifi \
          bin/netfix bin/wifidiag bin/minibash-services bin/minibash-desktop-warmup \
-         etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/sudoers.d \
+         etc/minibash etc/shells etc/NetworkManager etc/lightdm etc/polkit-1 etc/sudoers.d \
          etc/modprobe.d/iwl.conf etc/fstab etc/xdg usr/share/applications usr/src/minibash; do
   if [ -e "$DISTRO_DIR/rootfs/$p" ]; then
     mkdir -p "$CHROOT/$(dirname "$p")"
@@ -186,7 +186,7 @@ fi
 
 # Desktop services in the native bdb. With GNOME pre-baked, enable graphical
 # services. Without it, leave them down for a clean console boot.
-desktop_services="dbus elogind polkit upower rtkit accounts displayd portald udisksd graphical"
+desktop_services="udevd dbus wpasupp elogind polkit upower rtkit accounts displayd portald udisksd graphical"
 inchroot /bin/bdbc update services --where name=desktopd autostart=false desired=down >/dev/null || true
 if [ "${INCLUDE_GNOME:-0}" = "1" ]; then
   for svc in $desktop_services; do
