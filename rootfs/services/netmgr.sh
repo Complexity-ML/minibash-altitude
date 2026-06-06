@@ -155,12 +155,25 @@ set_static() {
 ETH="$(detect_eth || true)"
 if [ -n "$ETH" ]; then
   ip link set "$ETH" up 2>/dev/null || true
-  if ! ip -4 addr show "$ETH" 2>/dev/null | grep -q 'inet '; then
-    busybox udhcpc -i "$ETH" -s "$DHS" -t 3 -T 2 -n -q >/dev/null 2>&1 || true
-  fi
-  if ! ip -4 addr show "$ETH" 2>/dev/null | grep -q 'inet '; then
-    log "static $WIRED_IP on $ETH"
-    set_static "$ETH"
+  sleep 2  # let the link negotiate before reading carrier
+  if [ "$(cat /sys/class/net/$ETH/carrier 2>/dev/null)" = "1" ]; then
+    # cable plugged -> DHCP, then static fallback
+    if ! ip -4 addr show "$ETH" 2>/dev/null | grep -q 'inet '; then
+      busybox udhcpc -i "$ETH" -s "$DHS" -t 3 -T 2 -n -q >/dev/null 2>&1 || true
+    fi
+    if ! ip -4 addr show "$ETH" 2>/dev/null | grep -q 'inet '; then
+      log "static $WIRED_IP on $ETH"
+      set_static "$ETH"
+    fi
+  else
+    # NO cable (carrier=0): NEVER put an IP or default route on a dead link.
+    # Otherwise replies to the WiFi traffic egress via the dead eth0 and the box
+    # is unreachable (SSH times out) even though WiFi is connected. Flush any
+    # stale addr/route and let WiFi own the default route. THIS was the "ssh
+    # impossible en wifi" bug.
+    log "$ETH carrier=0 (pas de cable) -> ignore, le wifi gere le reseau"
+    ip addr flush dev "$ETH" 2>/dev/null || true
+    ip route del default dev "$ETH" 2>/dev/null || true
   fi
 fi
 

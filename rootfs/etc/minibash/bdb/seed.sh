@@ -19,9 +19,13 @@ if ! have_table services; then
   for f in /services/*.sh; do
     [ -e "$f" ] || continue
     n=$(basename "$f" .sh)
-    # the graphical desktop stays down by default; everything else autostarts
-    case "$n" in graphical|desktopd) on=false; want=down ;; *) on=true; want=up ;; esac
-    $BDB insert services name="$n" command="$f" autostart="$on" restart=true \
+    r=true
+    case "$n" in
+      graphical|desktopd) on=false; want=down ;;   # desktop off by default
+      keymap)             on=true;  want=up; r=false ;;  # oneshot: apply then exit
+      *)                  on=true;  want=up ;;
+    esac
+    $BDB insert services name="$n" command="$f" autostart="$on" restart="$r" \
       desired="$want" status=stopped pid=0 description="service $n" >/dev/null
   done
 fi
