@@ -30,6 +30,14 @@ if ! have_table services; then
   done
 fi
 
+# Add control-plane services introduced after the first database creation.
+if [ -x /services/reconciled.sh ] && \
+   ! $BDB dump services 2>/dev/null | cut -f1 | grep -qx reconciled; then
+  $BDB insert services name=reconciled command=/services/reconciled.sh \
+    autostart=true restart=true desired=up status=stopped pid=0 \
+    description="BDB control-plane reconciliation loop" >/dev/null
+fi
+
 # --- modules: KERNEL MODULES, driven by the DB -----------------------------
 # This is the "kernel services via the database" piece. `ccm` + aes were THE
 # missing modules that broke WiFi for days (mac80211 could not install the WPA
