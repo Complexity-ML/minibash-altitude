@@ -8,6 +8,13 @@ set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export BDB_PATH="${BDB_PATH:-/var/bdb}"
 exec >>/var/log/netmgr.log 2>&1
+NM_PID=""
+
+cleanup() {
+  [ -n "$NM_PID" ] && kill "$NM_PID" 2>/dev/null || true
+  wait "$NM_PID" 2>/dev/null || true
+}
+trap cleanup TERM INT EXIT
 
 log() { echo "netmgr: $* ($(date 2>/dev/null))"; }
 
@@ -187,14 +194,65 @@ if [ -x /usr/libexec/iwd ]; then
 Passphrase=${WIFI_PSK}
 
 [Settings]
-AutoConnect=true
+AutoConnect=false
 EOF
     chmod 600 "/var/lib/iwd/${WIFI_SSID}.psk"
   fi
   pgrep -x iwd >/dev/null 2>&1 || /usr/libexec/iwd >/var/log/iwd.log 2>&1 &
-  sleep 2
+  for _ in 1 2 3 4 5; do
+    busctl --system --no-pager list 2>/dev/null | awk '{print $1}' | grep -qx net.connman.iwd && break
+    sleep 1
+  done
   iwctl device "${WIFI_IFACE:-wlan0}" set-property Powered on >/dev/null 2>&1 || true
 fi
 
 log "starting NetworkManager"
-exec NetworkManager --no-daemon --log-level=INFO
+killall NetworkManager 2>/dev/null || true
+sleep 1
+NetworkManager --no-daemon --log-level=INFO &
+NM_PID=$!
+
+# Live carrier failover. Keep exactly one uplink active:
+#   carrier=1 -> Ethernet owns the route, WiFi is disconnected
+#   carrier=0 -> Ethernet is flushed, WiFi is powered and connected
+if [ -n "$ETH" ]; then
+  (
+    last=""
+    while kill -0 "$NM_PID" 2>/dev/null; do
+      carrier="$(cat "/sys/class/net/$ETH/carrier" 2>/dev/null || echo 0)"
+      if [ "$carrier" != "$last" ]; then
+        if [ "$carrier" = 1 ]; then
+          log "$ETH carrier=1 -> Ethernet primary"
+        else
+          log "$ETH carrier=0 -> switching to WiFi"
+        fi
+        last="$carrier"
+      fi
+
+      # Reconcile every pass because NetworkManager may not be ready during the
+      # first iteration and can otherwise reconnect an autoconnect profile.
+      if [ "$carrier" = 1 ]; then
+        [ -n "${WIFI_SSID:-}" ] && nmcli connection modify "$WIFI_SSID" connection.autoconnect no >/dev/null 2>&1 || true
+        nmcli device disconnect "${WIFI_IFACE:-wlan0}" >/dev/null 2>&1 || true
+        iwctl station "${WIFI_IFACE:-wlan0}" disconnect >/dev/null 2>&1 || true
+        ip link set "$ETH" up 2>/dev/null || true
+        nmcli device connect "$ETH" >/dev/null 2>&1 || true
+      else
+        nmcli device disconnect "$ETH" >/dev/null 2>&1 || true
+        ip addr flush dev "$ETH" 2>/dev/null || true
+        ip route del default dev "$ETH" 2>/dev/null || true
+        rfkill unblock wifi 2>/dev/null || true
+        iwctl device "${WIFI_IFACE:-wlan0}" set-property Powered on >/dev/null 2>&1 || true
+        nmcli radio wifi on >/dev/null 2>&1 || true
+        nmcli device set "${WIFI_IFACE:-wlan0}" managed yes >/dev/null 2>&1 || true
+        if [ -n "${WIFI_SSID:-}" ]; then
+          nmcli connection modify "$WIFI_SSID" connection.autoconnect yes >/dev/null 2>&1 || true
+          nmcli connection up "$WIFI_SSID" >/dev/null 2>&1 || true
+        fi
+      fi
+      sleep 2
+    done
+  ) &
+fi
+
+wait "$NM_PID"

@@ -57,6 +57,23 @@ if ! have_table modules; then
   add r8169    "" net "Realtek Ethernet"
 fi
 
+# Migrations for existing databases: iwd uses the kernel AF_ALG API, so these
+# modules must be added even when the modules table predates iwd support.
+ensure_module() {
+  name="$1"; params="$2"; stage="$3"; description="$4"
+  $BDB dump modules 2>/dev/null | cut -f1 | grep -qx "$name" && return 0
+  $BDB insert modules name="$name" params="$params" stage="$stage" autoload=true \
+    status=unloaded description="$description" >/dev/null
+}
+ensure_module crypto_user    "" crypto "AF_ALG userspace crypto"
+ensure_module algif_hash     "" crypto "AF_ALG hash interface"
+ensure_module algif_skcipher "" crypto "AF_ALG symmetric cipher interface"
+ensure_module ecb            "" crypto "ECB cipher mode"
+ensure_module cbc            "" crypto "CBC cipher mode"
+ensure_module md5            "" crypto "MD5 for iwd compatibility"
+ensure_module des_generic    "" crypto "DES compatibility"
+ensure_module hmac           "" crypto "HMAC for WPA authentication"
+
 # --- mounts: /etc/fstab as ROWS, driven by the DB (reconciled by mountd) ----
 if ! have_table mounts; then
   $BDB create mounts dst:text:pk src:text fstype:text opts:text desired:text \
