@@ -28,6 +28,10 @@ usage: bdbctl [command] [args]
   storage                 filesystems and declarative mounts
   kernel                  modules and sysctl state
   users                   local BDB accounts (passwords never displayed)
+  registry [PREFIX]       typed hierarchical system registry
+  dependencies            service requires/after/before relationships
+  dependency add SERVICE RELATION TARGET
+  dependency remove SERVICE RELATION TARGET
   updates                 packages, updates and A/B boot slots
   events [DOMAIN]         recent control-plane events
   logs [SERVICE]          recent BDB service logs
@@ -104,7 +108,7 @@ emit_health_issues() {
           { [ "${pid:-0}" = 0 ] || [ ! -d "/proc/$pid" ]; }; then
           printf 'service\t%s\tstale pid %s\n' "$name" "$pid"
         elif [ "$desired" = up ] &&
-          { [ "$status" = failed ] || [ "$status" = crashed ]; }; then
+          { [ "$status" = failed ] || [ "$status" = crashed ] || [ "$status" = blocked ]; }; then
           printf 'service\t%s\tdesired up, status %s\n' "$name" "$status"
         fi
       done
@@ -241,6 +245,71 @@ cmd_users() {
     }'
 }
 
+cmd_registry() {
+  /bin/bdbreg list "${1:-/}"
+}
+
+cmd_dependencies() {
+  have_table service_dependencies || {
+    echo "service_dependencies: absent"
+    return
+  }
+  printf '%-18s %-10s %s\n' SERVICE RELATION TARGET
+  "$BDB_BIN" dump service_dependencies 2>/dev/null | tail -n +2 |
+    awk -F '\t' '{ printf "%-18s %-10s %s\n", $2, $3, $4 }'
+}
+
+service_known() {
+  "$BDB_BIN" select services --where "name=$1" 2>/dev/null |
+    tail -n +2 | grep -q .
+}
+
+cmd_dependency() {
+  local action="${1:-}" service="${2:-}" relation="${3:-}" target="${4:-}"
+  [ -n "$service" ] && [ -n "$relation" ] && [ -n "$target" ] || {
+    echo "usage: bdbctl dependency add|remove SERVICE RELATION TARGET" >&2
+    return 64
+  }
+  case "$relation" in requires|after|before) ;; *)
+    echo "bdbctl: relation invalide: $relation" >&2
+    return 64
+  esac
+  service_known "$service" || {
+    echo "bdbctl: service inconnu: $service" >&2
+    return 1
+  }
+  service_known "$target" || {
+    echo "bdbctl: cible inconnue: $target" >&2
+    return 1
+  }
+  [ "$service" != "$target" ] || {
+    echo "bdbctl: une unite ne peut pas dependre d'elle-meme" >&2
+    return 1
+  }
+  local id="${service}:${relation}:${target}"
+  case "$action" in
+    add)
+      if "$BDB_BIN" select service_dependencies --where "id=$id" 2>/dev/null |
+        tail -n +2 | grep -q .; then
+        echo "bdbctl: dependency already exists"
+      else
+        "$BDB_BIN" insert service_dependencies id="$id" service="$service" \
+          relation="$relation" target="$target" >/dev/null
+        echo "bdbctl: added $service $relation $target"
+      fi
+      ;;
+    remove)
+      "$BDB_BIN" delete service_dependencies --where "id=$id" >/dev/null
+      echo "bdbctl: removed $service $relation $target"
+      ;;
+    *)
+      echo "usage: bdbctl dependency add|remove SERVICE RELATION TARGET" >&2
+      return 64
+      ;;
+  esac
+  kill -USR1 1 2>/dev/null || true
+}
+
 cmd_updates() {
   for table in packages updates boot_slots; do
     have_table "$table" || continue
@@ -275,7 +344,9 @@ cmd_check() {
 
 shell_help() {
   cat <<'EOF'
-summary | health | services | control | network | storage | kernel | users | updates
+summary | health | services | control | network | storage | kernel | users
+registry [prefix] | dependencies | updates
+dependency add|remove SERVICE RELATION TARGET
 events [domain] | logs [service] | check [table]
 start|stop|restart|enable|disable SERVICE
 db ARGS... | refresh | help | quit
@@ -287,7 +358,8 @@ cmd_shell() {
   while true; do
     printf '\033[2J\033[H'
     cmd_summary
-    printf '\n%sCommands:%s health services network storage kernel users updates events logs\n' "$cyan" "$reset"
+    printf '\n%sCommands:%s health services network storage kernel users registry dependencies\n' "$cyan" "$reset"
+    printf '          updates events logs\n'
     printf '          start/stop/restart SERVICE | check | db ... | help | quit\n'
     printf '%sbdbctl>%s ' "$bold" "$reset"
     IFS= read -r line || break
@@ -302,6 +374,13 @@ cmd_shell() {
       storage) cmd_storage; read -r -p "enter> " _ ;;
       kernel) cmd_kernel; read -r -p "enter> " _ ;;
       users) cmd_users; read -r -p "enter> " _ ;;
+      registry) cmd_registry "$rest"; read -r -p "enter> " _ ;;
+      dependencies) cmd_dependencies; read -r -p "enter> " _ ;;
+      dependency)
+        # shellcheck disable=SC2086
+        cmd_dependency $rest || true
+        read -r -p "enter> " _
+        ;;
       updates) cmd_updates; read -r -p "enter> " _ ;;
       events) cmd_events "$rest"; read -r -p "enter> " _ ;;
       logs) cmd_logs "$rest"; read -r -p "enter> " _ ;;
@@ -336,6 +415,9 @@ main() {
     storage) cmd_storage ;;
     kernel) cmd_kernel ;;
     users) cmd_users ;;
+    registry) cmd_registry "$@" ;;
+    dependencies) cmd_dependencies ;;
+    dependency) cmd_dependency "$@" ;;
     updates) cmd_updates ;;
     events) cmd_events "$@" ;;
     logs) cmd_logs "$@" ;;

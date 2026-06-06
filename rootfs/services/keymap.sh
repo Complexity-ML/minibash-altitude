@@ -10,6 +10,8 @@ set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 km=$(sed -n 's/.*minibash\.keymap=\([A-Za-z0-9_-]*\).*/\1/p' /proc/cmdline 2>/dev/null)
+[ -n "$km" ] || km=$(/bin/bdb select registry \
+  --where path=/system/locale/keymap 2>/dev/null | tail -n 1 | cut -f3)
 [ -n "$km" ] || km=fr
 # map short codes to real kbd keymap names
 case "$km" in

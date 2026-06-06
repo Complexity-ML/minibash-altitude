@@ -131,3 +131,41 @@ if ! have_table events; then
   $BDB create events id:text:pk timestamp:int domain:text generation:int \
     action:text result:text message:text >/dev/null
 fi
+
+# --- registry: typed hierarchical system/application configuration ----------
+if ! have_table registry; then
+  $BDB create registry path:text:pk type:text value:text owner:text \
+    updated_at:int >/dev/null
+  now=$(date +%s 2>/dev/null || echo 0)
+  $BDB insert registry path=/system/locale/keymap type=string value=fr \
+    owner=system updated_at="$now" >/dev/null
+  $BDB insert registry path=/system/desktop/enabled type=bool value=true \
+    owner=system updated_at="$now" >/dev/null
+  $BDB insert registry path=/system/network/failover type=string \
+    value=carrier owner=netmgr updated_at="$now" >/dev/null
+fi
+
+# --- service dependencies: systemd-like requires/after/before relationships -
+if ! have_table service_dependencies; then
+  $BDB create service_dependencies id:text:pk service:text relation:text \
+    target:text >/dev/null
+fi
+
+ensure_dependency() {
+  service="$1"; relation="$2"; target="$3"
+  id="${service}:${relation}:${target}"
+  $BDB dump service_dependencies 2>/dev/null | cut -f1 | grep -qx "$id" &&
+    return 0
+  $BDB insert service_dependencies id="$id" service="$service" \
+    relation="$relation" target="$target" >/dev/null
+}
+ensure_dependency netmgr requires dbus
+ensure_dependency polkit requires dbus
+ensure_dependency upower requires dbus
+ensure_dependency accounts requires dbus
+ensure_dependency graphical requires dbus
+ensure_dependency graphical requires elogind
+ensure_dependency graphical requires polkit
+ensure_dependency graphical after udevd
+ensure_dependency displayd after graphical
+ensure_dependency sshd after netmgr

@@ -55,6 +55,29 @@ bdbctl shell
 Le mode interactif est aussi lancé par `/bin/desktop`. Les profils réseau et les
 comptes sont affichés sans exposer les PSK ni les hash de mots de passe.
 
+### Registry et unités
+
+La table `registry` stocke des valeurs typées dans une hiérarchie de chemins,
+par exemple `/system/desktop/enabled`. `bdbreg` permet de les administrer :
+
+```bash
+bdbreg list /system
+bdbreg set /apps/demo/enabled bool true demo
+bdbreg get /apps/demo/enabled
+```
+
+`minit` lit déjà le réglage du bureau dans ce registre, et `keymap` y lit la
+disposition clavier. La table `service_dependencies` fournit les relations
+`requires`, `after` et `before` :
+
+```bash
+bdbctl dependencies
+bdbctl dependency add graphical requires dbus
+```
+
+`minit` trie les unités, bloque les cycles et arrête les dépendants avant leurs
+prérequis.
+
 ### Persistance disque
 
 minit cherche un disque (`/dev/vda`, virtio), le formate en ext2 au premier boot

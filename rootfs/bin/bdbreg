@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Typed hierarchical registry backed by the native BDB engine.
+set -euo pipefail
+
+export BDB_PATH="${BDB_PATH:-/var/bdb}"
+BDB="${BDB_BIN:-/bin/bdb}"
+
+usage() {
+  cat <<'EOF'
+usage: bdbreg <command> [args]
+
+  list [PREFIX]                    list registry values below PREFIX
+  get PATH                         read one value
+  set PATH TYPE VALUE [OWNER]      create or replace a typed value
+  delete PATH                      remove one value
+
+types: string int bool real
+EOF
+}
+
+die() {
+  echo "bdbreg: $*" >&2
+  exit 1
+}
+
+valid_path() {
+  [[ "$1" == /* ]] && [[ "$1" != *$'\t'* ]] && [[ "$1" != *$'\n'* ]]
+}
+
+validate_value() {
+  case "$1" in
+    string) return 0 ;;
+    int) [[ "$2" =~ ^-?[0-9]+$ ]] ;;
+    real) [[ "$2" =~ ^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]] ;;
+    bool) [[ "$2" == true || "$2" == false ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+exists() {
+  "$BDB" select registry --where "path=$1" 2>/dev/null |
+    tail -n +2 | grep -q .
+}
+
+cmd_list() {
+  local prefix="${1:-/}"
+  valid_path "$prefix" || die "chemin invalide: $prefix"
+  printf '%-42s %-8s %-14s %s\n' PATH TYPE OWNER VALUE
+  "$BDB" dump registry | tail -n +2 |
+    awk -F '\t' -v p="$prefix" 'index($1, p) == 1 {
+      printf "%-42s %-8s %-14s %s\n", $1, $2, $4, $3
+    }'
+}
+
+cmd_get() {
+  local path="${1:-}"
+  valid_path "$path" || die "chemin invalide: $path"
+  "$BDB" select registry --where "path=$path"
+}
+
+cmd_set() {
+  local path="${1:-}" type="${2:-}" value="${3-}" owner="${4:-operator}"
+  valid_path "$path" || die "chemin invalide: $path"
+  validate_value "$type" "$value" || die "valeur invalide pour le type $type"
+  local now
+  now=$(date +%s 2>/dev/null || echo 0)
+  if exists "$path"; then
+    "$BDB" update registry --where "path=$path" type="$type" value="$value" \
+      owner="$owner" updated_at="$now" >/dev/null
+  else
+    "$BDB" insert registry path="$path" type="$type" value="$value" \
+      owner="$owner" updated_at="$now" >/dev/null
+  fi
+  echo "bdbreg: set $path ($type)"
+}
+
+cmd_delete() {
+  local path="${1:-}"
+  valid_path "$path" || die "chemin invalide: $path"
+  "$BDB" delete registry --where "path=$path" >/dev/null
+  echo "bdbreg: deleted $path"
+}
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  list) cmd_list "$@" ;;
+  get) cmd_get "$@" ;;
+  set) cmd_set "$@" ;;
+  delete) cmd_delete "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 64 ;;
+esac

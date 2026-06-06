@@ -1,4 +1,4 @@
-// minit - PID 1 for minibash-linux (v0.2)
+// minit - PID 1 for minibash-linux (v0.4)
 //
 // A small, dependency-free init written in Rust. It does the things a Bash
 // PID 1 cannot do safely:
@@ -131,6 +131,14 @@ struct Service {
     command: String,
     restart: bool,
     desired: String,
+    status: String,
+}
+
+#[derive(Clone)]
+struct Dependency {
+    service: String,
+    relation: String,
+    target: String,
 }
 
 // ----------------------------------------------------------------------------
@@ -362,10 +370,10 @@ fn console_tty() -> String {
 }
 
 fn desktop_autostart_disabled() -> bool {
-    matches!(
-        kernel_arg("minibash.desktop").as_deref(),
-        Some("off") | Some("debug") | Some("shell")
-    )
+    if let Some(mode) = kernel_arg("minibash.desktop") {
+        return matches!(mode.as_str(), "off" | "debug" | "shell");
+    }
+    registry_value("/system/desktop/enabled").as_deref() == Some("false")
 }
 
 fn try_mount(dev: &str, target: &str, fstype: &str) -> bool {
@@ -430,7 +438,15 @@ fn db_lock() -> bool {
     let lock = format!("{BDB_PATH}/.lock");
     for _ in 0..50 {
         if fs::create_dir(&lock).is_ok() {
-            return true;
+            let boot_id = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+                .unwrap_or_default();
+            let owner = format!("{lock}/owner");
+            if fs::write(&owner, format!("{} {}\n", std::process::id(), boot_id.trim()))
+                .is_ok()
+            {
+                return true;
+            }
+            let _ = fs::remove_dir(&lock);
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -438,7 +454,9 @@ fn db_lock() -> bool {
 }
 
 fn db_unlock() {
-    let _ = fs::remove_dir(format!("{BDB_PATH}/.lock"));
+    let lock = format!("{BDB_PATH}/.lock");
+    let _ = fs::remove_file(format!("{lock}/owner"));
+    let _ = fs::remove_dir(lock);
 }
 
 // Update specific columns (by index) of the services row whose name matches.
@@ -555,9 +573,106 @@ fn read_services() -> Vec<Service> {
             command: f[1].clone(),
             restart: f[3] == "true",
             desired,
+            status: f[5].clone(),
         });
     }
     out
+}
+
+fn registry_value(path: &str) -> Option<String> {
+    read_bdb_rows(&format!("{BDB_PATH}/tables/registry/data.bdb"), 5)?
+        .into_iter()
+        .find(|fields| fields.len() >= 5 && fields[0] == path)
+        .map(|fields| fields[2].clone())
+}
+
+fn read_dependencies() -> Vec<Dependency> {
+    let rows = match read_bdb_rows(
+        &format!("{BDB_PATH}/tables/service_dependencies/data.bdb"),
+        4,
+    ) {
+        Some(rows) => rows,
+        None => return Vec::new(),
+    };
+    rows.into_iter()
+        .filter(|f| f.len() >= 4)
+        .filter(|f| matches!(f[2].as_str(), "requires" | "after" | "before"))
+        .map(|f| Dependency {
+            service: f[1].clone(),
+            relation: f[2].clone(),
+            target: f[3].clone(),
+        })
+        .collect()
+}
+
+fn ordered_services(
+    services: &[Service],
+    dependencies: &[Dependency],
+) -> (Vec<Service>, Vec<String>) {
+    let mut indegree: HashMap<String, usize> = HashMap::new();
+    let mut edges: HashMap<String, Vec<String>> = HashMap::new();
+    for svc in services {
+        indegree.insert(svc.name.clone(), 0);
+        edges.insert(svc.name.clone(), Vec::new());
+    }
+    for dep in dependencies {
+        if !indegree.contains_key(&dep.service) || !indegree.contains_key(&dep.target) {
+            continue;
+        }
+        let (from, to) = if dep.relation == "before" {
+            (&dep.service, &dep.target)
+        } else {
+            (&dep.target, &dep.service)
+        };
+        let targets = edges.get_mut(from).unwrap();
+        if !targets.contains(to) {
+            targets.push(to.clone());
+            *indegree.get_mut(to).unwrap() += 1;
+        }
+    }
+
+    let mut ready: Vec<String> = services
+        .iter()
+        .filter(|svc| indegree.get(&svc.name) == Some(&0))
+        .map(|svc| svc.name.clone())
+        .collect();
+    let mut names = Vec::new();
+    while !ready.is_empty() {
+        let name = ready.remove(0);
+        names.push(name.clone());
+        if let Some(targets) = edges.get(&name) {
+            for target in targets {
+                let degree = indegree.get_mut(target).unwrap();
+                *degree -= 1;
+                if *degree == 0 {
+                    ready.push(target.clone());
+                }
+            }
+        }
+    }
+    let cyclic: Vec<String> = services
+        .iter()
+        .filter(|svc| !names.contains(&svc.name))
+        .map(|svc| svc.name.clone())
+        .collect();
+    let by_name: HashMap<String, Service> = services
+        .iter()
+        .cloned()
+        .map(|svc| (svc.name.clone(), svc))
+        .collect();
+    let ordered = names
+        .into_iter()
+        .filter_map(|name| by_name.get(&name).cloned())
+        .collect();
+    (ordered, cyclic)
+}
+
+fn required_targets<'a>(name: &str, dependencies: &'a [Dependency]) -> Vec<&'a str> {
+    dependencies
+        .iter()
+        .filter(|dep| dep.service == name && dep.relation == "requires")
+        .map(|dep| dep.target.as_str())
+        .collect()
 }
 
 // ----------------------------------------------------------------------------
@@ -694,13 +809,54 @@ fn reconcile() {
     if SHUTDOWN.load(Ordering::SeqCst) != 0 {
         return;
     }
-    for svc in read_services() {
-        let want_up = svc.desired == "up";
+    let services = read_services();
+    let dependencies = read_dependencies();
+    let desired: HashMap<String, String> = services
+        .iter()
+        .map(|svc| (svc.name.clone(), svc.desired.clone()))
+        .collect();
+    let (ordered, cyclic) = ordered_services(&services, &dependencies);
+
+    // Stop in reverse dependency order: consumers before their providers.
+    for svc in ordered.iter().rev() {
+        let required_down = required_targets(&svc.name, &dependencies).iter().any(|target| {
+            desired.get(*target).map(String::as_str) != Some("up")
+        });
+        let should_stop = svc.desired != "up" || required_down;
         let have = sup_lock().has(&svc.name);
-        if want_up && !have {
-            start_service(&svc);
-        } else if !want_up && have {
+        if should_stop && have {
             stop_service(&svc.name);
+        }
+        if required_down && svc.desired == "up" && svc.status != "blocked" {
+            set_service_fields(&svc.name, &[(5, "blocked"), (6, "0")]);
+        }
+    }
+
+    for name in &cyclic {
+        if sup_lock().has(name) {
+            stop_service(name);
+        }
+        set_service_fields(name, &[(5, "blocked"), (6, "0")]);
+        log(&format!("dependency cycle blocks {name}"));
+    }
+
+    // Start in topological order. A hard requirement must already be running.
+    for svc in &ordered {
+        if svc.desired != "up" {
+            continue;
+        }
+        let missing = required_targets(&svc.name, &dependencies)
+            .into_iter()
+            .find(|target| !sup_lock().has(target));
+        if let Some(target) = missing {
+            if svc.status != "blocked" {
+                set_service_fields(&svc.name, &[(5, "blocked"), (6, "0")]);
+            }
+            log(&format!("{} blocked: requires {}", svc.name, target));
+            continue;
+        }
+        if !sup_lock().has(&svc.name) {
+            start_service(svc);
         }
     }
     // keep an interactive console available
@@ -981,5 +1137,53 @@ fn main() {
             break;
         }
         thread::sleep(Duration::from_millis(200));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn service(name: &str) -> Service {
+        Service {
+            name: name.to_string(),
+            command: format!("/services/{name}.sh"),
+            restart: true,
+            desired: "up".to_string(),
+            status: "stopped".to_string(),
+        }
+    }
+
+    fn dependency(service: &str, relation: &str, target: &str) -> Dependency {
+        Dependency {
+            service: service.to_string(),
+            relation: relation.to_string(),
+            target: target.to_string(),
+        }
+    }
+
+    #[test]
+    fn orders_requirements_and_after_before_edges() {
+        let services = vec![service("graphical"), service("dbus"), service("displayd")];
+        let deps = vec![
+            dependency("graphical", "requires", "dbus"),
+            dependency("displayd", "after", "graphical"),
+        ];
+        let (ordered, cyclic) = ordered_services(&services, &deps);
+        let names: Vec<&str> = ordered.iter().map(|svc| svc.name.as_str()).collect();
+        assert_eq!(names, vec!["dbus", "graphical", "displayd"]);
+        assert!(cyclic.is_empty());
+    }
+
+    #[test]
+    fn reports_dependency_cycles() {
+        let services = vec![service("a"), service("b")];
+        let deps = vec![
+            dependency("a", "after", "b"),
+            dependency("b", "after", "a"),
+        ];
+        let (ordered, cyclic) = ordered_services(&services, &deps);
+        assert!(ordered.is_empty());
+        assert_eq!(cyclic, vec!["a", "b"]);
     }
 }
