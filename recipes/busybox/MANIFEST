@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-busybox
+Version: 1.37.0
+Architecture: amd64
+Description: BusyBox userspace built from locked upstream source by Altitude

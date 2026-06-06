@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-forge-tools
+Version: 1.0.0
+Architecture: amd64
+Description: Locked m4, Bison and Gawk build tools for the Altitude source forge

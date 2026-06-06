@@ -1,0 +1,19 @@
+From: Altitude Linux <build@altitude.local>
+Subject: [PATCH] x86_64: avoid duplicate bootstrap unwind frame
+
+The initial GCC is built before libc and conservatively emits a writable
+.eh_frame.  libc_sigaction.c already supplies the complete signal-restorer
+frame as a read-only section, so disable compiler-generated unwind tables for
+that one translation unit during the bootstrap.
+
+--- a/sysdeps/unix/sysv/linux/x86_64/Makefile
++++ b/sysdeps/unix/sysv/linux/x86_64/Makefile
+@@ -1,3 +1,8 @@
++ifeq ($(subdir),signal)
++CFLAGS-libc_sigaction.c += -fno-asynchronous-unwind-tables \
++			  -fno-unwind-tables
++endif
++
+ ifeq ($(subdir),misc)
+ sysdep_routines += ioperm iopl
+ endif

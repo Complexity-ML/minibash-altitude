@@ -1,4 +1,5 @@
 out/
+sources/cache/
 rust/**/target/
 rust/**/Cargo.lock
 *.log

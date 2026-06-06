@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-binutils
+Version: 2.44
+Architecture: amd64
+Description: GNU Binutils built from locked upstream source for the Altitude toolchain

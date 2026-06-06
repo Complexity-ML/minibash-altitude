@@ -67,3 +67,29 @@ to use the existing A/B boot slots so a failed boot can roll back.
    debootstrap forge.
 4. Build and configure the kernel from an Altitude-owned source recipe.
 5. Operate separate stable, testing and security repositories.
+
+## Source forge
+
+`sources/SOURCES.lock` is the source trust root. Each entry pins an official
+upstream URL and SHA-256 digest. `scripts/source-fetch.sh` refuses unlocked or
+modified archives. Recipes under `recipes/` build into isolated staging roots,
+record their compiler and source digest, then emit normal signed `.altpkg`
+artifacts.
+## Source toolchain
+
+Locked upstream archives live in `sources/SOURCES.lock`. Source recipes verify
+those hashes before extracting anything and install their payload below an
+isolated Altitude prefix. The toolchain starts at `/opt/altitude/toolchain`;
+host tools remain bootstrap inputs only and their version is recorded in each
+package's provenance file.
+
+The forge is built in passes:
+
+1. bootstrap Binutils and GCC using the available host compiler;
+2. install Linux UAPI headers and build the Altitude libc in the sysroot;
+3. rebuild Binutils and GCC with the Altitude compiler and sysroot;
+4. rebuild BusyBox, the kernel, and subsequent packages with that toolchain.
+
+Only artifacts produced by the final pass are eligible for an Altitude release.
+Bootstrap packages are deliberately named `*-bootstrap`; they are forge inputs,
+not packages installed in a release image.
