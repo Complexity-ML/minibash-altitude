@@ -20,7 +20,7 @@ Linux kernel (stable ISO: Debian vmlinuz connu-good; lab: bzImage custom)
     -> bdbboot (Rust)     : resume des services au boot
     -> login (Bash)       : auth contre la table `users` de la BDD (+ autologin kernel)
     -> bashsvc (Bash)     : client de controle (ne lance plus rien lui-meme)
-    -> bdb (Bash)         : la BDD, source de verite unique (base64 en Bash pur)
+    -> bdb/bdbc (C)       : moteur BDB natif, source de verite unique
     -> services Bash      : clock, web, metrics, cron, netd, syslog, healthd,
                              pkgd, updated, sshd, desktopd, worker, installer
 ```
@@ -34,6 +34,11 @@ les orphelins ré-attachés, gérer les signaux, arrêter proprement la machine.
 La **base de données `bdb` reste la seule source de vérité**, et elle est
 **persistante** : minit monte un disque sur `/var/bdb`, donc services, état
 `desired`, utilisateurs et logs survivent aux reboots.
+
+Le moteur C publie chaque mutation via un WAL synchronisé sur disque. Après une
+coupure, la première commande rejoue le journal et récupère automatiquement un
+verrou laissé par le processus interrompu. `bdb check [TABLE]` vérifie la
+structure, les types et l'unicité des clés primaires.
 
 ### Persistance disque
 
@@ -217,7 +222,7 @@ docker run --rm --platform linux/amd64 -v /Users/boris/Dev:/work \
 - `rootfs/bin/minibash-update`: staging metadata d'upgrades.
 - `rootfs/bin/desktop`: dashboard console/terminal pour le desktop minimal.
 - `rootfs/bin/desktop-install`: installe le payload desktop depuis la partition data USB.
-- `rootfs/bin/bdb`    : la BDD Bash relationnelle (base64 en Bash pur, sans fork).
+- `rootfs/bin/bdb`    : frontal du moteur BDB natif `bdbc` écrit en C.
 - `rootfs/etc/minibash/bdb`: seed de la BDD (tables `services`, `users`, `logs`).
 - `rootfs/services`   : services pilotés par la BDD.
 - `docs/legacy-init.bash`: l'ancien PID 1 en Bash (v0.1), pour référence.

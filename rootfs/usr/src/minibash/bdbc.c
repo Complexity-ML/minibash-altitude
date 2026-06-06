@@ -2,7 +2,9 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,8 +15,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define VERSION "0.3.0-native"
+#define VERSION "0.4.0-native"
 #define BDB_MAGIC "BDB1"
+#define WAL_MAGIC "BWL1"
+
+typedef struct {
+  const char *target;
+  const char *staged;
+} WalEntry;
 
 typedef struct { char *name; char *type; bool pk; } Column;
 typedef struct { Column *cols; size_t len; int pk_idx; } Schema;
@@ -69,6 +77,22 @@ static char *table_dir(const char *table) { return xasprintf("%s/tables/%s", db_
 static char *schema_path(const char *table) { return xasprintf("%s/schema.bdb", table_dir(table)); }
 static char *data_path(const char *table) { return xasprintf("%s/data.bdb", table_dir(table)); }
 
+static void sync_fd(int fd, const char *path) {
+  if (fsync(fd) != 0) die("fsync %s: %s", path, strerror(errno));
+}
+
+static void sync_file(FILE *f, const char *path) {
+  if (fflush(f) != 0) die("flush %s: %s", path, strerror(errno));
+  sync_fd(fileno(f), path);
+}
+
+static void sync_dir(const char *path) {
+  int fd = open(path, O_RDONLY | O_DIRECTORY);
+  if (fd < 0) die("open directory %s: %s", path, strerror(errno));
+  sync_fd(fd, path);
+  close(fd);
+}
+
 static void mkdir_p(const char *path) {
   char tmp[PATH_MAX];
   snprintf(tmp, sizeof(tmp), "%s", path);
@@ -112,6 +136,7 @@ static void write_str(FILE *f, const char *s) {
 
 static char *read_str(FILE *f) {
   uint32_t n = read_u32(f);
+  if (n > 64U * 1024U * 1024U) die("champ natif trop grand");
   char *s = calloc((size_t)n + 1, 1);
   if (!s) die("out of memory");
   if (n && fread(s, 1, n, f) != n) die("native read failed");
@@ -120,6 +145,192 @@ static char *read_str(FILE *f) {
 
 static void write_magic(FILE *f) {
   if (fwrite(BDB_MAGIC, 1, 4, f) != 4) die("write failed");
+}
+
+static uint32_t crc32_update(uint32_t crc, const unsigned char *data, size_t len) {
+  crc = ~crc;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (int bit = 0; bit < 8; bit++)
+      crc = (crc >> 1) ^ (0xedb88320U & (uint32_t)-(int32_t)(crc & 1));
+  }
+  return ~crc;
+}
+
+static uint32_t file_crc32(FILE *f, uint64_t *size) {
+  unsigned char buf[16384];
+  uint32_t crc = 0;
+  *size = 0;
+  rewind(f);
+  for (;;) {
+    size_t n = fread(buf, 1, sizeof(buf), f);
+    if (n) {
+      crc = crc32_update(crc, buf, n);
+      *size += n;
+    }
+    if (n < sizeof(buf)) {
+      if (ferror(f)) die("read staged file failed");
+      break;
+    }
+  }
+  rewind(f);
+  return crc;
+}
+
+static void copy_bytes(FILE *src, FILE *dst, uint64_t size) {
+  unsigned char buf[16384];
+  while (size) {
+    size_t want = size < sizeof(buf) ? (size_t)size : sizeof(buf);
+    size_t n = fread(buf, 1, want, src);
+    if (n != want || fwrite(buf, 1, n, dst) != n) die("copy failed");
+    size -= n;
+  }
+}
+
+static void write_u64(FILE *f, uint64_t v) {
+  write_u32(f, (uint32_t)(v & UINT32_MAX));
+  write_u32(f, (uint32_t)(v >> 32));
+}
+
+static uint64_t read_u64(FILE *f) {
+  uint64_t lo = read_u32(f), hi = read_u32(f);
+  return lo | (hi << 32);
+}
+
+static char *parent_dir(const char *path) {
+  char *out = xstrdup(path);
+  char *slash = strrchr(out, '/');
+  if (!slash) {
+    free(out);
+    return xstrdup(".");
+  }
+  if (slash == out) slash[1] = 0;
+  else *slash = 0;
+  return out;
+}
+
+static void install_payload(const char *target, FILE *wal, uint64_t size, uint32_t expected_crc) {
+  char *parent = parent_dir(target);
+  char *tmp = xasprintf("%s/.bdb-recover-%ld.tmp", parent, (long)getpid());
+  FILE *out = fopen(tmp, "wb");
+  if (!out) die("open %s: %s", tmp, strerror(errno));
+  uint32_t crc = 0;
+  unsigned char buf[16384];
+  uint64_t left = size;
+  while (left) {
+    size_t want = left < sizeof(buf) ? (size_t)left : sizeof(buf);
+    size_t n = fread(buf, 1, want, wal);
+    if (n != want) die("WAL tronque");
+    crc = crc32_update(crc, buf, n);
+    if (fwrite(buf, 1, n, out) != n) die("write %s failed", tmp);
+    left -= n;
+  }
+  if (crc != expected_crc) die("checksum WAL invalide pour %s", target);
+  sync_file(out, tmp);
+  if (fclose(out) != 0) die("close %s: %s", tmp, strerror(errno));
+  if (rename(tmp, target) != 0) die("rename %s: %s", target, strerror(errno));
+  sync_dir(parent);
+  free(tmp);
+  free(parent);
+}
+
+static void recover_wal(void) {
+  char *wal_path = xasprintf("%s/WAL", db_dir());
+  FILE *wal = fopen(wal_path, "rb");
+  if (!wal) {
+    if (errno != ENOENT) die("open WAL: %s", strerror(errno));
+    free(wal_path);
+    return;
+  }
+  char magic[4];
+  if (fread(magic, 1, 4, wal) != 4 || memcmp(magic, WAL_MAGIC, 4) != 0)
+    die("WAL invalide: %s", wal_path);
+  uint32_t version = read_u32(wal), count = read_u32(wal);
+  if (version != 1 || count > 64) die("WAL incompatible: %s", wal_path);
+  for (uint32_t i = 0; i < count; i++) {
+    char *target = read_str(wal);
+    uint64_t size = read_u64(wal);
+    uint32_t crc = read_u32(wal);
+    size_t root_len = strlen(db_dir());
+    if (strncmp(target, db_dir(), root_len) != 0 || target[root_len] != '/')
+      die("cible WAL hors base: %s", target);
+    install_payload(target, wal, size, crc);
+    free(target);
+  }
+  fclose(wal);
+  if (unlink(wal_path) != 0) die("clear WAL: %s", strerror(errno));
+  sync_dir(db_dir());
+  free(wal_path);
+}
+
+static void cleanup_stale_files(void) {
+  char *wal_tmp = xasprintf("%s/.WAL.tmp", db_dir());
+  unlink(wal_tmp);
+  free(wal_tmp);
+  char *tables = xasprintf("%s/tables", db_dir());
+  DIR *d = opendir(tables);
+  if (!d) {
+    free(tables);
+    return;
+  }
+  struct dirent *e;
+  while ((e = readdir(d))) {
+    if (!strncmp(e->d_name, ".drop-", 6)) {
+      char *dir = xasprintf("%s/%s", tables, e->d_name);
+      char *schema = xasprintf("%s/schema.bdb", dir);
+      char *data = xasprintf("%s/data.bdb", dir);
+      unlink(schema);
+      unlink(data);
+      rmdir(dir);
+      free(data);
+      free(schema);
+      free(dir);
+      continue;
+    }
+    if (e->d_name[0] == '.') continue;
+    char *dir = xasprintf("%s/%s", tables, e->d_name);
+    if (exists_dir(dir)) {
+      char *schema_tmp = xasprintf("%s/.schema.bdb.tmp", dir);
+      char *data_tmp = xasprintf("%s/.data.bdb.tmp", dir);
+      unlink(schema_tmp);
+      unlink(data_tmp);
+      free(data_tmp);
+      free(schema_tmp);
+    }
+    free(dir);
+  }
+  closedir(d);
+  free(tables);
+}
+
+static void commit_files(const WalEntry *entries, size_t count) {
+  char *wal_path = xasprintf("%s/WAL", db_dir());
+  char *wal_tmp = xasprintf("%s/.WAL.tmp", db_dir());
+  FILE *wal = fopen(wal_tmp, "wb");
+  if (!wal) die("open %s: %s", wal_tmp, strerror(errno));
+  if (fwrite(WAL_MAGIC, 1, 4, wal) != 4) die("write WAL failed");
+  write_u32(wal, 1);
+  write_u32(wal, (uint32_t)count);
+  for (size_t i = 0; i < count; i++) {
+    FILE *src = fopen(entries[i].staged, "rb");
+    if (!src) die("open %s: %s", entries[i].staged, strerror(errno));
+    uint64_t size;
+    uint32_t crc = file_crc32(src, &size);
+    write_str(wal, entries[i].target);
+    write_u64(wal, size);
+    write_u32(wal, crc);
+    copy_bytes(src, wal, size);
+    fclose(src);
+  }
+  sync_file(wal, wal_tmp);
+  if (fclose(wal) != 0) die("close WAL: %s", strerror(errno));
+  if (rename(wal_tmp, wal_path) != 0) die("publish WAL: %s", strerror(errno));
+  sync_dir(db_dir());
+  if (getenv("BDB_TEST_CRASH_AFTER_WAL")) _exit(99);
+  recover_wal();
+  for (size_t i = 0; i < count; i++) unlink(entries[i].staged);
+  free(wal_tmp);
+  free(wal_path);
 }
 
 static void read_magic(FILE *f, const char *path) {
@@ -138,7 +349,8 @@ static Schema load_schema(const char *table) {
   if (!f) die("schema natif introuvable: %s", path);
   read_magic(f, path);
   uint32_t version = read_u32(f), cols = read_u32(f), pk_idx = read_u32(f);
-  if (version != 1) die("schema natif incompatible: %s", path);
+  if (version != 1 || cols > 4096 || (pk_idx != UINT32_MAX && pk_idx >= cols))
+    die("schema natif incompatible: %s", path);
   Schema s = {.len = cols, .pk_idx = pk_idx == UINT32_MAX ? -1 : (int)pk_idx};
   s.cols = calloc(s.len, sizeof(Column));
   if (!s.cols && s.len) die("out of memory");
@@ -147,20 +359,22 @@ static Schema load_schema(const char *table) {
     s.cols[i].type = read_str(f);
     s.cols[i].pk = read_u32(f) == 1;
   }
+  if (fgetc(f) != EOF) die("donnees en trop dans le schema: %s", path);
   fclose(f);
   free(path);
   return s;
 }
 
-static void write_schema(const char *table, const Schema *s) {
-  char *td = table_dir(table), *path = schema_path(table), *tmp = xasprintf("%s/.schema.bdb.tmp", td);
+static char *stage_schema(const char *table, const Schema *s) {
+  char *td = table_dir(table), *tmp = xasprintf("%s/.schema.bdb.tmp", td);
   FILE *f = fopen(tmp, "wb");
   if (!f) die("open %s: %s", tmp, strerror(errno));
   write_magic(f); write_u32(f, 1); write_u32(f, (uint32_t)s->len); write_u32(f, s->pk_idx < 0 ? UINT32_MAX : (uint32_t)s->pk_idx);
   for (size_t i = 0; i < s->len; i++) { write_str(f, s->cols[i].name); write_str(f, s->cols[i].type); write_u32(f, s->cols[i].pk ? 1 : 0); }
-  fclose(f);
-  if (rename(tmp, path) != 0) die("rename %s: %s", path, strerror(errno));
-  free(tmp); free(path); free(td);
+  sync_file(f, tmp);
+  if (fclose(f) != 0) die("close %s: %s", tmp, strerror(errno));
+  free(td);
+  return tmp;
 }
 
 static void free_row(char **row, size_t cols) {
@@ -179,7 +393,8 @@ static RowSet read_rows(const char *table, const Schema *s) {
   if (!f) die("data natif introuvable: %s", path);
   read_magic(f, path);
   uint32_t version = read_u32(f), cols = read_u32(f), rows = read_u32(f);
-  if (version != 1 || cols != s->len) die("data natif incompatible: %s", path);
+  if (version != 1 || cols != s->len || rows > 10000000)
+    die("data natif incompatible: %s", path);
   RowSet rs = {.len = rows, .rows = calloc(rows, sizeof(char **))};
   if (!rs.rows && rows) die("out of memory");
   for (size_t r = 0; r < rs.len; r++) {
@@ -187,20 +402,30 @@ static RowSet read_rows(const char *table, const Schema *s) {
     if (!rs.rows[r]) die("out of memory");
     for (size_t c = 0; c < s->len; c++) rs.rows[r][c] = read_str(f);
   }
+  if (fgetc(f) != EOF) die("donnees en trop dans la table: %s", path);
   fclose(f);
   free(path);
   return rs;
 }
 
-static void write_rows(const char *table, const Schema *s, const RowSet *rs) {
-  char *td = table_dir(table), *path = data_path(table), *tmp = xasprintf("%s/.data.bdb.tmp", td);
+static char *stage_rows(const char *table, const Schema *s, const RowSet *rs) {
+  char *td = table_dir(table), *tmp = xasprintf("%s/.data.bdb.tmp", td);
   FILE *f = fopen(tmp, "wb");
   if (!f) die("open %s: %s", tmp, strerror(errno));
   write_magic(f); write_u32(f, 1); write_u32(f, (uint32_t)s->len); write_u32(f, (uint32_t)rs->len);
   for (size_t r = 0; r < rs->len; r++) for (size_t c = 0; c < s->len; c++) write_str(f, rs->rows[r][c]);
-  fclose(f);
-  if (rename(tmp, path) != 0) die("rename %s: %s", path, strerror(errno));
-  free(tmp); free(path); free(td);
+  sync_file(f, tmp);
+  if (fclose(f) != 0) die("close %s: %s", tmp, strerror(errno));
+  free(td);
+  return tmp;
+}
+
+static void write_rows(const char *table, const Schema *s, const RowSet *rs) {
+  char *path = data_path(table), *tmp = stage_rows(table, s, rs);
+  WalEntry entry = {.target = path, .staged = tmp};
+  commit_files(&entry, 1);
+  free(tmp);
+  free(path);
 }
 
 static int col_index(const Schema *s, const char *name) {
@@ -244,15 +469,67 @@ static bool row_matches(char **row, const Schema *s, const char *col, const char
   return strcmp(row[idx], val) == 0;
 }
 
+static void require_unique_pk(const char *table, const Schema *s, const RowSet *rs) {
+  if (s->pk_idx < 0) return;
+  for (size_t r = 0; r < rs->len; r++) {
+    for (size_t prev = 0; prev < r; prev++) {
+      if (strcmp(rs->rows[prev][s->pk_idx], rs->rows[r][s->pk_idx]) == 0)
+        die("%s: cle primaire dupliquee: %s", table, rs->rows[r][s->pk_idx]);
+    }
+  }
+}
+
+static void read_boot_id(char *out, size_t size) {
+  out[0] = 0;
+  FILE *f = fopen("/proc/sys/kernel/random/boot_id", "r");
+  if (!f) return;
+  if (fgets(out, (int)size, f)) out[strcspn(out, "\r\n")] = 0;
+  fclose(f);
+}
+
 static void lock_db(void) {
   char *lock = xasprintf("%s/.lock", db_dir());
-  for (int i = 0; i < 50; i++) { if (mkdir(lock, 0755) == 0) { free(lock); return; } usleep(100000); }
+  char *owner = xasprintf("%s/owner", lock);
+  char boot_id[64];
+  read_boot_id(boot_id, sizeof(boot_id));
+  for (int i = 0; i < 50; i++) {
+    if (mkdir(lock, 0755) == 0) {
+      FILE *f = fopen(owner, "w");
+      if (!f) die("open lock owner: %s", strerror(errno));
+      fprintf(f, "%ld %s\n", (long)getpid(), boot_id);
+      sync_file(f, owner);
+      fclose(f);
+      free(owner);
+      free(lock);
+      return;
+    }
+    FILE *f = fopen(owner, "r");
+    long pid = 0;
+    char owner_boot_id[64] = "";
+    if (f) {
+      if (fscanf(f, "%ld %63s", &pid, owner_boot_id) < 1) pid = 0;
+      fclose(f);
+    }
+    bool wrong_boot = boot_id[0] && strcmp(boot_id, owner_boot_id) != 0;
+    bool dead_owner = pid <= 1 || pid == (long)getpid() ||
+      (kill((pid_t)pid, 0) != 0 && errno == ESRCH);
+    if (wrong_boot || dead_owner) {
+      unlink(owner);
+      rmdir(lock);
+      continue;
+    }
+    usleep(100000);
+  }
+  free(owner);
   die("verrou occupe: %s", db_dir());
 }
 
 static void unlock_db(void) {
   char *lock = xasprintf("%s/.lock", db_dir());
+  char *owner = xasprintf("%s/owner", lock);
+  unlink(owner);
   rmdir(lock);
+  free(owner);
   free(lock);
 }
 
@@ -263,7 +540,9 @@ static void cmd_init(int argc, char **argv) {
   FILE *f = fopen(version, "w");
   if (!f) die("open %s: %s", version, strerror(errno));
   fprintf(f, "%s\n", VERSION);
+  sync_file(f, version);
   fclose(f);
+  sync_dir(dir);
   printf("base initialisee: %s\n", dir);
   free(tables); free(version);
 }
@@ -281,6 +560,49 @@ static void cmd_tables(void) {
     free(td);
   }
   closedir(d); free(p);
+}
+
+static void validate_table(const char *table) {
+  Schema s = load_schema(table);
+  RowSet rs = read_rows(table, &s);
+  for (size_t r = 0; r < rs.len; r++) {
+    for (size_t c = 0; c < s.len; c++) {
+      if (!validate_type(s.cols[c].type, rs.rows[r][c]))
+        die("%s: valeur invalide ligne %zu colonne %s", table, r + 1, s.cols[c].name);
+    }
+  }
+  require_unique_pk(table, &s, &rs);
+  free_rowset(&rs, s.len);
+  free_schema(&s);
+}
+
+static void cmd_check(int argc, char **argv) {
+  require_db();
+  if (argc > 1) die("usage: bdb check [TABLE]");
+  if (argc == 1) {
+    require_table(argv[0]);
+    validate_table(argv[0]);
+    printf("ok\t%s\n", argv[0]);
+    return;
+  }
+  char *p = xasprintf("%s/tables", db_dir());
+  DIR *d = opendir(p);
+  if (!d) die("opendir %s: %s", p, strerror(errno));
+  struct dirent *e;
+  size_t count = 0;
+  while ((e = readdir(d))) {
+    if (e->d_name[0] == '.') continue;
+    char *td = xasprintf("%s/%s", p, e->d_name);
+    if (exists_dir(td)) {
+      validate_table(e->d_name);
+      printf("ok\t%s\n", e->d_name);
+      count++;
+    }
+    free(td);
+  }
+  closedir(d);
+  free(p);
+  printf("base saine: %zu table(s)\n", count);
 }
 
 static void cmd_schema(const char *table) {
@@ -318,8 +640,18 @@ static void cmd_create(int argc, char **argv) {
     free(spec);
   }
   RowSet empty = {0};
-  write_schema(table, &s);
-  write_rows(table, &s, &empty);
+  char *schema = schema_path(table), *data = data_path(table);
+  char *schema_tmp = stage_schema(table, &s);
+  char *data_tmp = stage_rows(table, &s, &empty);
+  WalEntry entries[] = {
+    {.target = schema, .staged = schema_tmp},
+    {.target = data, .staged = data_tmp}
+  };
+  commit_files(entries, 2);
+  free(schema_tmp);
+  free(data_tmp);
+  free(schema);
+  free(data);
   free_schema(&s);
   free(td);
   printf("table creee: %s\n", table);
@@ -373,6 +705,7 @@ static void cmd_insert(int argc, char **argv) {
     rs.rows[rs.len][c] = xstrdup(v);
   }
   rs.len++;
+  require_unique_pk(argv[0], &s, &rs);
   write_rows(argv[0], &s, &rs);
   printf("ligne inseree: %s\n", argv[0]);
   free_assigns(a, an); free_rowset(&rs, s.len); free_schema(&s);
@@ -399,6 +732,7 @@ static void cmd_update(int argc, char **argv) {
       rs.rows[r][c] = xstrdup(v);
     }
   }
+  require_unique_pk(argv[0], &s, &rs);
   write_rows(argv[0], &s, &rs);
   printf("lignes modifiees: %zu\n", count);
   free_assigns(a, an); free(where.col); free(where.val); free_rowset(&rs, s.len); free_schema(&s);
@@ -425,25 +759,51 @@ static void cmd_delete(int argc, char **argv) {
 
 static void cmd_drop(const char *table) {
   require_db(); require_table(table);
-  char *td = table_dir(table), *schema = schema_path(table), *data = data_path(table);
-  unlink(schema); unlink(data);
-  if (rmdir(td) != 0) die("drop %s: %s", table, strerror(errno));
+  char *td = table_dir(table);
+  char *tables = xasprintf("%s/tables", db_dir());
+  char *tombstone = xasprintf("%s/.drop-%s-%ld", tables, table, (long)getpid());
+  if (rename(td, tombstone) != 0) die("drop %s: %s", table, strerror(errno));
+  sync_dir(tables);
+  char *schema = xasprintf("%s/schema.bdb", tombstone);
+  char *data = xasprintf("%s/data.bdb", tombstone);
+  unlink(schema);
+  unlink(data);
+  if (rmdir(tombstone) != 0) die("cleanup drop %s: %s", table, strerror(errno));
+  sync_dir(tables);
   printf("table supprimee: %s\n", table);
-  free(schema); free(data); free(td);
+  free(schema); free(data); free(tombstone); free(tables); free(td);
 }
 
 static void usage(void) {
   puts("bdbc - moteur C natif pour bdb");
-  puts("usage: bdb init|create|tables|schema|insert|select|dump|update|delete|drop ...");
+  puts("usage: bdb init|create|tables|schema|insert|select|dump|update|delete|drop|check ...");
 }
 
 int main(int argc, char **argv) {
   if (argc < 2) { usage(); return 0; }
   const char *cmd = argv[1];
   if (strcmp(cmd, "version") == 0 || strcmp(cmd, "--version") == 0) { puts(VERSION); return 0; }
-  bool writes = !strcmp(cmd, "init") || !strcmp(cmd, "create") || !strcmp(cmd, "insert") || !strcmp(cmd, "update") || !strcmp(cmd, "delete") || !strcmp(cmd, "drop");
-  if (writes) lock_db();
-  if (strcmp(cmd, "init") == 0) cmd_init(argc - 2, argv + 2);
+  bool init = !strcmp(cmd, "init");
+  bool writes = !strcmp(cmd, "create") || !strcmp(cmd, "insert") ||
+    !strcmp(cmd, "update") || !strcmp(cmd, "delete") || !strcmp(cmd, "drop");
+  bool locked = false;
+  if (!init) {
+    require_db();
+    char *wal = xasprintf("%s/WAL", db_dir());
+    bool recovery_needed = access(wal, F_OK) == 0;
+    free(wal);
+    if (writes || recovery_needed) {
+      lock_db();
+      locked = true;
+      recover_wal();
+      cleanup_stale_files();
+      if (!writes) {
+        unlock_db();
+        locked = false;
+      }
+    }
+  }
+  if (init) cmd_init(argc - 2, argv + 2);
   else if (strcmp(cmd, "create") == 0) cmd_create(argc - 2, argv + 2);
   else if (strcmp(cmd, "tables") == 0) cmd_tables();
   else if (strcmp(cmd, "schema") == 0) { if (argc != 3) die("usage: bdb schema TABLE"); cmd_schema(argv[2]); }
@@ -455,7 +815,12 @@ int main(int argc, char **argv) {
   else if (strcmp(cmd, "update") == 0) cmd_update(argc - 2, argv + 2);
   else if (strcmp(cmd, "delete") == 0) cmd_delete(argc - 2, argv + 2);
   else if (strcmp(cmd, "drop") == 0) { if (argc != 3) die("usage: bdb drop TABLE"); cmd_drop(argv[2]); }
-  else { usage(); if (writes) unlock_db(); return 64; }
-  if (writes) unlock_db();
+  else if (strcmp(cmd, "check") == 0) cmd_check(argc - 2, argv + 2);
+  else {
+    usage();
+    if (locked) unlock_db();
+    return 64;
+  }
+  if (locked) unlock_db();
   return 0;
 }
