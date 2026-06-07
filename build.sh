@@ -348,12 +348,6 @@ pack_initramfs() {
 
 build_kernel() {
   if [ "$BUILD_KERNEL" != "1" ]; then
-    # Prefer the external prebuilt kernel, but fall back to a repo-local cache
-    # so the build stays self-contained if that external tree disappears.
-    if [ ! -f "$REUSE_KERNEL" ] && [ -f "$DISTRO_DIR/kernel/bzImage" ]; then
-      REUSE_KERNEL="$DISTRO_DIR/kernel/bzImage"
-      log "external kernel missing; using cached $REUSE_KERNEL"
-    fi
     if [ ! -f "$REUSE_KERNEL" ]; then
       echo "missing reusable kernel: $REUSE_KERNEL" >&2
       echo "set BUILD_KERNEL=1 or REUSE_KERNEL=/path/to/bzImage" >&2
