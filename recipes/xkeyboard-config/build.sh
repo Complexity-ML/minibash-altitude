@@ -40,6 +40,12 @@ DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
 install -d "$SYSROOT/usr"
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
+if [ -L "$SYSROOT/usr/share/X11/xkb" ]; then
+  ln -sfn ../xkeyboard-config-2 "$SYSROOT/usr/share/X11/xkb"
+fi
+if [ -L "$PAYLOAD/usr/share/X11/xkb" ]; then
+  ln -sfn ../xkeyboard-config-2 "$PAYLOAD/usr/share/X11/xkb"
+fi
 
 {
   echo "Source: xkeyboard-config"
