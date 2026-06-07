@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-forge-distutils
+Version: 68.2.2
+Architecture: amd64
+Description: Distutils compatibility modules for Altitude forge Python

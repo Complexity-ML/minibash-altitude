@@ -8,6 +8,7 @@ VERSION=1.84.0
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
 FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
+EXE_WRAPPER="${ALTITUDE_EXE_WRAPPER:-}"
 TOOLCHAIN="$TOOLCHAIN_ROOT/opt/altitude/toolchain"
 FORGE="$FORGE_ROOT/opt/altitude/forge"
 SYSROOT="$TOOLCHAIN/sysroot"
@@ -17,11 +18,13 @@ STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PYTHON="$FORGE/bin/python3"
 PAYLOAD="$WORK/payload"
+BUILD_TOOLS="$WORK/build-tools"
 TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gobject-introspection)"
 
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64"
 
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG" "$PYTHON"; do
   [ -x "$tool" ] || { echo "gobject-introspection: missing build tool: $tool" >&2; exit 1; }
@@ -37,11 +40,28 @@ done
 
 rm -rf "$WORK"
 mkdir -p "$WORK/source" "$WORK/build" \
-  "$PAYLOAD/usr/share/altitude/sources" "$OUT"
+  "$PAYLOAD/usr/share/altitude/sources" "$BUILD_TOOLS" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 
 sed -i "/python_version.version_compare('>=3.12')/,/endif/d" \
   "$WORK/source/meson.build"
+
+cat > "$BUILD_TOOLS/ldd" <<EOF
+#!/usr/bin/env sh
+exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
+EOF
+chmod 755 "$BUILD_TOOLS/ldd"
+export PATH="$BUILD_TOOLS:$PATH"
+
+if [ -z "$EXE_WRAPPER" ]; then
+  EXE_WRAPPER="$WORK/target-wrapper"
+  cat > "$EXE_WRAPPER" <<EOF
+#!/usr/bin/env sh
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$FORGE/lib:\${LD_LIBRARY_PATH:-}"
+exec "\$@"
+EOF
+  chmod 755 "$EXE_WRAPPER"
+fi
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -50,6 +70,7 @@ ar = '$AR'
 strip = '$STRIP'
 pkg-config = '$PKG_CONFIG'
 python = '$PYTHON'
+exe_wrapper = '$EXE_WRAPPER'
 
 [properties]
 sys_root = '$SYSROOT'
@@ -71,26 +92,42 @@ meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
   --buildtype=release --wrap-mode=nofallback \
   -Dpython="$PYTHON" -Dgtk_doc=false -Ddoctool=disabled \
-  -Dcairo=disabled -Dtests=false -Dbuild_introspection_data=false \
-  -Dgi_cross_pkgconfig_sysroot_path="$SYSROOT"
+  -Dcairo=disabled -Dtests=false -Dbuild_introspection_data=true \
+  -Dgi_cross_pkgconfig_sysroot_path=
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
+
+install -d "$PAYLOAD/usr/share/gir-1.0" "$PAYLOAD/usr/lib/girepository-1.0"
+for gir in GLib-2.0 GObject-2.0; do
+  install -m 644 "$WORK/build/gir/$gir.gir" "$PAYLOAD/usr/share/gir-1.0/$gir.gir"
+  "$EXE_WRAPPER" "$WORK/build/tools/g-ir-compiler" \
+    --includedir="$WORK/build/gir" \
+    --output="$PAYLOAD/usr/lib/girepository-1.0/$gir.typelib" \
+    "$WORK/build/gir/$gir.gir"
+done
 
 find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
   while IFS= read -r -d '' file; do
     "$STRIP" --strip-unneeded "$file" 2>/dev/null || true
   done
 
-install -d "$SYSROOT/usr" "$FORGE/bin" "$FORGE/lib"
+install -d "$SYSROOT/usr" "$FORGE/bin" "$FORGE/lib" "$FORGE/share"
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 [ -d "$PAYLOAD/usr/bin" ] && cp -a "$PAYLOAD/usr/bin/." "$FORGE/bin/"
 [ -d "$PAYLOAD/usr/lib/gobject-introspection" ] && \
   cp -a "$PAYLOAD/usr/lib/gobject-introspection" "$FORGE/lib/"
+[ -d "$PAYLOAD/usr/share/gobject-introspection-1.0" ] && \
+  cp -a "$PAYLOAD/usr/share/gobject-introspection-1.0" "$FORGE/share/"
+[ -d "$PAYLOAD/usr/share/gir-1.0" ] && \
+  cp -a "$PAYLOAD/usr/share/gir-1.0" "$FORGE/share/"
 for pc in "$PAYLOAD/usr/lib/pkgconfig/gobject-introspection-1.0.pc" \
   "$SYSROOT/usr/lib/pkgconfig/gobject-introspection-1.0.pc"; do
   [ -f "$pc" ] || continue
   sed -i \
-    -e "s|^g_ir_scanner=.*|g_ir_scanner=$FORGE/bin/g-ir-scanner|" \
-    -e "s|^g_ir_compiler=.*|g_ir_compiler=$FORGE/bin/g-ir-compiler|" \
+    -e "s|^g_ir_scanner=.*|g_ir_scanner=\${pc_sysrootdir}/../../forge/bin/g-ir-scanner|" \
+    -e "s|^g_ir_compiler=.*|g_ir_compiler=\${pc_sysrootdir}/../../forge/bin/g-ir-compiler|" \
+    -e "s|^gidatadir=.*|gidatadir=\${pc_sysrootdir}/usr/share/gobject-introspection-1.0|" \
+    -e "s|^girdir=.*|girdir=\${pc_sysrootdir}/usr/share/gir-1.0|" \
+    -e "s|^typelibdir=.*|typelibdir=\${pc_sysrootdir}/usr/lib/girepository-1.0|" \
     "$pc"
 done
 

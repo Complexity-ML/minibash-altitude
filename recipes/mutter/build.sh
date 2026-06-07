@@ -17,11 +17,13 @@ AR="$TOOLCHAIN/bin/$TARGET-ar"
 STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
+BUILD_TOOLS="$WORK/build-tools"
 TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" mutter)"
 
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -Wl,-rpath-link,$SYSROOT/lib -Wl,-rpath-link,$SYSROOT/lib64 -Wl,-rpath-link,$WORK/build/cogl/cogl -Wl,-rpath-link,$WORK/build/clutter/clutter -Wl,-rpath-link,$WORK/build/mtk/mtk -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64 -L$SYSROOT/lib -L$SYSROOT/lib64 -L$WORK/build/cogl/cogl -L$WORK/build/clutter/clutter -L$WORK/build/mtk/mtk"
 
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || { echo "mutter: missing build tool: $tool" >&2; exit 1; }
@@ -43,8 +45,22 @@ done
 
 rm -rf "$WORK"
 mkdir -p "$WORK/source" "$WORK/build" \
-  "$PAYLOAD/usr/share/altitude/sources" "$OUT"
+  "$PAYLOAD/usr/share/altitude/sources" "$BUILD_TOOLS" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+sed -i "s/subdir('doc\\/man')/# Altitude: manpages need rst2man, skip for source build/" \
+  "$WORK/source/meson.build"
+sed -i '/#include "meta\/prefs.h"/a\
+\
+#ifndef ATK_LIVE_POLITE\
+#define ATK_LIVE_POLITE "polite"\
+#endif' "$WORK/source/src/core/workspace.c"
+
+cat > "$BUILD_TOOLS/ldd" <<EOF
+#!/usr/bin/env sh
+exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
+EOF
+chmod 755 "$BUILD_TOOLS/ldd"
+export PATH="$BUILD_TOOLS:$PATH"
 
 if [ -z "$EXE_WRAPPER" ]; then
   EXE_WRAPPER="$WORK/target-wrapper"
@@ -77,7 +93,7 @@ endian = 'little'
 
 [built-in options]
 c_args = ['-O2', '-pipe']
-c_link_args = ['-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64', '-Wl,-rpath-link,$SYSROOT/lib', '-Wl,-rpath-link,$SYSROOT/lib64']
+c_link_args = ['-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64', '-Wl,-rpath-link,$SYSROOT/lib', '-Wl,-rpath-link,$SYSROOT/lib64', '-Wl,-rpath-link,$WORK/build/cogl/cogl', '-Wl,-rpath-link,$WORK/build/clutter/clutter', '-Wl,-rpath-link,$WORK/build/mtk/mtk']
 EOF
 
 meson setup "$WORK/build" "$WORK/source" \

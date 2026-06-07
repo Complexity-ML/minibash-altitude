@@ -8,6 +8,7 @@ VERSION=48.0
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
 FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
+EXE_WRAPPER="${ALTITUDE_EXE_WRAPPER:-}"
 TOOLCHAIN="$TOOLCHAIN_ROOT/opt/altitude/toolchain"
 FORGE="$FORGE_ROOT/opt/altitude/forge"
 SYSROOT="$TOOLCHAIN/sysroot"
@@ -25,7 +26,7 @@ export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || { echo "gsettings-desktop-schemas: missing build tool: $tool" >&2; exit 1; }
 done
-for tool in meson ninja glib-mkenums glib-compile-schemas; do
+for tool in meson ninja glib-mkenums glib-compile-schemas g-ir-compiler; do
   command -v "$tool" >/dev/null ||
     { echo "gsettings-desktop-schemas: missing forge tool: $tool" >&2; exit 1; }
 done
@@ -35,12 +36,23 @@ mkdir -p "$WORK/source" "$WORK/build" \
   "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 
+if [ -z "$EXE_WRAPPER" ]; then
+  EXE_WRAPPER="$WORK/target-wrapper"
+  cat > "$EXE_WRAPPER" <<EOF
+#!/usr/bin/env sh
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$FORGE/lib:\${LD_LIBRARY_PATH:-}"
+exec "\$@"
+EOF
+  chmod 755 "$EXE_WRAPPER"
+fi
+
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
 c = '$CC'
 ar = '$AR'
 strip = '$STRIP'
 pkg-config = '$PKG_CONFIG'
+exe_wrapper = '$EXE_WRAPPER'
 
 [properties]
 sys_root = '$SYSROOT'
@@ -56,7 +68,7 @@ EOF
 
 meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
-  --buildtype=release --wrap-mode=nofallback -Dintrospection=false
+  --buildtype=release --wrap-mode=nofallback -Dintrospection=true
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
 install -d "$SYSROOT/usr/include" "$SYSROOT/usr/share"

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-forge-jinja2
+Version: 3.1.6
+Architecture: amd64
+Description: Jinja2 template engine for Altitude forge Python build tools

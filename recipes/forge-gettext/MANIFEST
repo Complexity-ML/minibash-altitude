@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-forge-gettext
+Version: 0.26
+Architecture: amd64
+Description: GNU gettext tools for the Altitude forge, including msgfmt

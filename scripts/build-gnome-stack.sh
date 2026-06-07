@@ -39,7 +39,8 @@ build_layer() {
 build_layer core-primitives zlib libffi pcre2 expat
 build_layer python python-build-runtime
 build_layer compiler gcc-cxx
-build_layer tooling forge-tools meson ninja cmake
+build_layer tooling forge-tools forge-cvt forge-gettext meson ninja cmake
+build_layer python-tooling forge-jinja2 forge-distutils
 build_layer core glib
 build_layer ipc dbus
 build_layer mesa-forge forge-mesa-python
@@ -73,6 +74,9 @@ build_layer login elogind
 build_layer input-primitives libevdev mtdev
 build_layer input libinput
 build_layer introspection gobject-introspection
+build_layer color-primitives lcms2
+build_layer compositor-primitives atk libei libdisplay-info
+build_layer color colord
 build_layer shell-compositor mutter
 build_layer shell gnome-shell
 build_layer session gnome-session

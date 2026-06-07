@@ -128,6 +128,36 @@ Version: 1.84.0
 URL: https://download.gnome.org/sources/gobject-introspection/1.84/gobject-introspection-1.84.0.tar.xz
 SHA256: 945b57da7ec262e5c266b89e091d14be800cc424277d82a02872b7d794a84779
 
+Source: atk
+Version: 2.38.0
+URL: https://download.gnome.org/sources/atk/2.38/atk-2.38.0.tar.xz
+SHA256: ac4de2a4ef4bd5665052952fe169657e65e895c5057dffb3c2a810f6191a0c36
+
+Source: lcms2
+Version: 2.17
+URL: https://github.com/mm2/Little-CMS/releases/download/lcms2.17/lcms2-2.17.tar.gz
+SHA256: d11af569e42a1baa1650d20ad61d12e41af4fead4aa7964a01f93b08b53ab074
+
+Source: colord
+Version: 1.4.8
+URL: https://www.freedesktop.org/software/colord/releases/colord-1.4.8.tar.xz
+SHA256: 21500bd68975312a7f0f3ce6019d9f75f42aacaa75ca7115ec720b5445406896
+
+Source: libei
+Version: 1.4.1
+URL: https://gitlab.freedesktop.org/libinput/libei/-/archive/1.4.1/libei-1.4.1.tar.gz
+SHA256: d0e8f18eb3617fbcc3d860bb54a47e17709e94e8e7cb0ae01ae221c67f000872
+
+Source: libdisplay-info
+Version: 0.2.0
+URL: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/0.2.0/downloads/libdisplay-info-0.2.0.tar.xz
+SHA256: 5a2f002a16f42dd3540c8846f80a90b8f4bdcd067a94b9d2087bc2feae974176
+
+Source: jinja2
+Version: 3.1.6
+URL: https://files.pythonhosted.org/packages/source/J/Jinja2/jinja2-3.1.6.tar.gz
+SHA256: 0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d
+
 Source: cmake
 Version: 3.31.7
 URL: https://cmake.org/files/v3.31/cmake-3.31.7.tar.gz
@@ -192,6 +222,16 @@ Source: markupsafe
 Version: 3.0.3
 URL: https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-3.0.3.tar.gz
 SHA256: 722695808f4b6457b320fdc131280796bdceb04ab50fe1795cd540799ebe1698
+
+Source: setuptools
+Version: 68.2.2
+URL: https://files.pythonhosted.org/packages/source/s/setuptools/setuptools-68.2.2.tar.gz
+SHA256: 4ac1475276d2f1c48684874089fefcd83bd7162ddaafb81fac866ba0db282a87
+
+Source: gettext
+Version: 0.26
+URL: https://ftp.gnu.org/gnu/gettext/gettext-0.26.tar.xz
+SHA256: d1fb86e260cfe7da6031f94d2e44c0da55903dbae0a2fa0fae78c91ae1b56f00
 
 Source: packaging
 Version: 25.0

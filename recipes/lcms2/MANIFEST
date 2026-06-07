@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-lcms2
+Version: 2.17
+Architecture: amd64
+Description: Little CMS color management library for Altitude

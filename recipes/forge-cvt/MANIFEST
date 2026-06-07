@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-forge-cvt
+Version: 1.0.0
+Architecture: amd64
+Description: Forge cvt modeline generator for GNOME/Mutter builds

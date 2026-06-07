@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libdisplay-info
+Version: 0.2.0
+Architecture: amd64
+Description: EDID and DisplayID parsing library for Mutter
