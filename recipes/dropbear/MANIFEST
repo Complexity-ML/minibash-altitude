@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-dropbear
+Version: 2024.85
+Architecture: amd64
+Description: dropbear SSH server/client cross-built static by the Altitude toolchain

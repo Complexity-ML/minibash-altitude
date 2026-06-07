@@ -92,3 +92,8 @@ Source: wpa_supplicant
 Version: 2.11
 URL: https://w1.fi/releases/wpa_supplicant-2.11.tar.gz
 SHA256: 912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
+
+Source: dropbear
+Version: 2024.85
+URL: https://matt.ucc.asn.au/dropbear/releases/dropbear-2024.85.tar.bz2
+SHA256: 86b036c433a69d89ce51ebae335d65c47738ccf90d13e5eb0fea832e556da502
