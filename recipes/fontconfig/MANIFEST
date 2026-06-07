@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-fontconfig
+Version: 2.16.0
+Architecture: amd64
+Description: Font discovery and configuration library cross-built for Altitude

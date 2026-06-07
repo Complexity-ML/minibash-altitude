@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-util-linux
+Version: 2.41.2
+Architecture: amd64
+Description: Minimal util-linux libraries and mount tools for Altitude

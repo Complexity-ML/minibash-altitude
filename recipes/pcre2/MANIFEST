@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-pcre2
+Version: 10.47
+Architecture: amd64
+Description: PCRE2 8-bit Unicode runtime and development files for Altitude GLib

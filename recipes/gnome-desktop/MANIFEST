@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gnome-desktop
+Version: 44.5
+Architecture: amd64
+Description: GNOME desktop libraries for the Altitude session

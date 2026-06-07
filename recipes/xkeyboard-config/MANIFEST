@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-xkeyboard-config
+Version: 2.45
+Architecture: amd64
+Description: XKB keyboard layout data for the Altitude desktop stack

@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+JOBS="${GNOME_RECIPE_JOBS:-4}"
+
+"$ROOT/scripts/ensure-forge-make.sh"
+
+build_layer() {
+  local name="$1"
+  shift
+  local recipe pid failed
+  local -a pids=()
+
+  printf '[gnome-stack] layer %s: %s\n' "$name" "$*"
+  failed=0
+  for recipe in "$@"; do
+    if ls "$ROOT/out/source-packages/altitude-$recipe"-*-amd64.altpkg >/dev/null 2>&1; then
+      printf '[gnome-stack] skipping %s (package exists)\n' "$recipe"
+      continue
+    fi
+    (
+      printf '[gnome-stack] building %s\n' "$recipe"
+      "$ROOT/scripts/build-source-recipe.sh" "$recipe"
+    ) &
+    pids+=("$!")
+    if [ "${#pids[@]}" -ge "$JOBS" ]; then
+      for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+      pids=()
+    fi
+  done
+  for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+  if [ "$failed" -ne 0 ]; then
+    echo "[gnome-stack] layer $name failed" >&2
+    exit 1
+  fi
+}
+
+build_layer core-primitives zlib libffi pcre2 expat
+build_layer python python-build-runtime
+build_layer compiler gcc-cxx
+build_layer tooling forge-tools meson ninja cmake
+build_layer core glib
+build_layer ipc dbus
+build_layer mesa-forge forge-mesa-python
+build_layer graphics-primitives wayland libdrm
+build_layer graphics-protocols wayland-protocols
+build_layer graphics mesa
+build_layer image-primitives libpng
+build_layer ui-primitives freetype pixman
+build_layer fonts fontconfig
+build_layer text-primitives fribidi datrie
+build_layer thai libthai
+build_layer image gdk-pixbuf libtiff libjpeg-turbo
+build_layer xml libxml2
+build_layer css libcroco
+build_layer svg librsvg
+build_layer geometry graphene
+build_layer gl-dispatch libepoxy
+build_layer keymaps libxkbcommon
+build_layer shaping harfbuzz
+build_layer drawing cairo
+build_layer text pango
+build_layer toolkit gtk4
+build_layer shell-schemas gsettings-desktop-schemas
+build_layer desktop-data xkeyboard-config iso-codes
+build_layer sandbox libseccomp
+build_layer shell-desktop gnome-desktop
+build_layer system-libs libcap util-linux
+build_layer devices eudev
+build_layer device-glue libgudev
+build_layer login elogind
+build_layer input-primitives libevdev mtdev
+build_layer input libinput
+build_layer introspection gobject-introspection
+build_layer shell-compositor mutter
+build_layer shell gnome-shell
+build_layer session gnome-session
+build_layer desktop-services polkit accountsservice upower udisks
+
+printf '[gnome-stack] foundational GNOME stack complete\n'

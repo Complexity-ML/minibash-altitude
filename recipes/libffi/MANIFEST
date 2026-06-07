@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libffi
+Version: 3.5.2
+Architecture: amd64
+Description: libffi runtime and development files cross-built for Altitude

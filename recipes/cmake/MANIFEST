@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-cmake
+Version: 3.31.7
+Architecture: amd64
+Description: CMake compatibility build tool for GNOME dependencies in the Altitude forge

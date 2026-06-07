@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-iso-codes
+Version: 4.18.0
+Architecture: amd64
+Description: ISO country, language, script, and currency data for Altitude

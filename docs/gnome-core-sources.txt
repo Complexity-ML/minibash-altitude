@@ -1,0 +1,27 @@
+# Proposed SOURCES.lock entries for the GNOME IPC/runtime foundation.
+# These are intentionally not added to sources/SOURCES.lock here.
+
+Source: libffi
+Version: 3.5.2
+URL: https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz
+SHA256: f3a3082a23b37c293a4fcd1053147b371f2ff91fa7ea1b2a52e335676bac82dc
+
+Source: pcre2
+Version: 10.47
+URL: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.47/pcre2-10.47.tar.bz2
+SHA256: 47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7
+
+Source: glib
+Version: 2.84.4
+URL: https://download.gnome.org/sources/glib/2.84/glib-2.84.4.tar.xz
+SHA256: 8a9ea10943c36fc117e253f80c91e477b673525ae45762942858aef57631bb90
+
+Source: expat
+Version: 2.7.3
+URL: https://github.com/libexpat/libexpat/releases/download/R_2_7_3/expat-2.7.3.tar.xz
+SHA256: 71df8f40706a7bb0a80a5367079ea75d91da4f8c65c58ec59bcdfbf7decdab9f
+
+Source: dbus
+Version: 1.16.2
+URL: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
+SHA256: 0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libcroco
+Version: 0.6.13
+Architecture: amd64
+Description: CSS parsing library cross-built for the Altitude SVG stack

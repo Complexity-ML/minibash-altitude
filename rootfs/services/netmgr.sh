@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # NetworkManager service for minibash-native.
 #
-# We still apply a wired static fallback before NM starts so the Omen stays
+# We still apply a wired static fallback before NM starts so the target stays
 # reachable over SSH even when DHCP/carrier are flaky. GNOME then talks to the
 # real org.freedesktop.NetworkManager service for WiFi.
 set -u

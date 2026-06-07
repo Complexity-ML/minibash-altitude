@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-dbus
+Version: 1.16.2
+Architecture: amd64
+Description: D-Bus message bus daemon, tools and library for Altitude

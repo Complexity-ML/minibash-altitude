@@ -21,7 +21,10 @@ if ! have_table services; then
     n=$(basename "$f" .sh)
     r=true
     case "$n" in
-      graphical|desktopd) on=false; want=down ;;   # desktop off by default
+      graphical|desktopd|displayd|dbus|elogind|polkit|upower|accounts|udisksd|wpasupp|netmgr)
+        on=false
+        want=down
+        ;;
       keymap|kmod|mountd|sysctld) on=true; want=up; r=false ;;  # oneshot reconcilers
       *)                  on=true;  want=up ;;
     esac
@@ -139,7 +142,7 @@ if ! have_table registry; then
   now=$(date +%s 2>/dev/null || echo 0)
   $BDB insert registry path=/system/locale/keymap type=string value=fr \
     owner=system updated_at="$now" >/dev/null
-  $BDB insert registry path=/system/desktop/enabled type=bool value=true \
+  $BDB insert registry path=/system/desktop/enabled type=bool value=false \
     owner=system updated_at="$now" >/dev/null
   $BDB insert registry path=/system/network/failover type=string \
     value=carrier owner=netmgr updated_at="$now" >/dev/null
@@ -156,7 +159,7 @@ ensure_registry /system/product/name string "Altitude Linux" system
 ensure_registry /system/product/id string altitude system
 ensure_registry /system/product/version string 0.1.0 system
 ensure_registry /system/product/codename string basecamp system
-ensure_registry /system/product/base string debian system
+ensure_registry /system/product/base string altitude system
 
 # --- service dependencies: systemd-like requires/after/before relationships -
 if ! have_table service_dependencies; then

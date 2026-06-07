@@ -19,9 +19,37 @@ log() { echo "wifi: $*"; }
 # 1. driver + opmode. Don't rely on the kernel auto-loading the opmode via
 #    request_module (timing-sensitive): load both explicitly so the one matching
 #    the card binds and creates wlanN deterministically.
-modprobe iwlwifi 2>/dev/null || true
-modprobe iwlmvm  2>/dev/null || true
-modprobe iwldvm  2>/dev/null || true
+#
+KD="/lib/modules/$(uname -r)"
+ins() {
+  if [ -f "$KD/$1" ]; then
+    insmod "$KD/$1" 2>&1 &&
+      log "insmod $1 OK" ||
+      log "insmod $1 rc=$?"
+  else
+    log "ABSENT $1"
+  fi
+}
+
+# mac80211 advertises CCMP even when its crypto implementations are modular.
+# BusyBox modules.dep.bb may still reference compressed Debian module names, so
+# load the native Altitude .ko files directly. Without CCM, WPA reaches message
+# 3/4 and NEW_KEY fails with ENOENT.
+ins kernel/crypto/cryptd.ko
+ins kernel/crypto/ghash-generic.ko
+ins kernel/arch/x86/crypto/ghash-clmulni-intel.ko
+ins kernel/arch/x86/crypto/aesni-intel.ko
+ins kernel/crypto/cmac.ko
+ins kernel/crypto/ccm.ko
+ins kernel/crypto/gcm.ko
+
+ins kernel/net/rfkill/rfkill.ko
+ins kernel/net/wireless/cfg80211.ko
+ins kernel/lib/crypto/libarc4.ko
+ins kernel/net/mac80211/mac80211.ko
+ins kernel/drivers/net/wireless/intel/iwlwifi/iwlwifi.ko
+ins kernel/drivers/net/wireless/intel/iwlwifi/mvm/iwlmvm.ko
+modprobe iwlmvm 2>&1 || true
 
 # 2. clear any RF-kill soft block (a common cause of "failed to init interface")
 modprobe rfkill 2>/dev/null || true

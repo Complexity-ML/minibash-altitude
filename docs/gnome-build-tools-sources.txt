@@ -1,0 +1,24 @@
+# Proposed SOURCES.lock entries for the GNOME build-tool forge
+#
+# These stanzas are intentionally kept out of sources/SOURCES.lock. Add them
+# there only after independent upstream verification and review.
+
+Source: python-build-runtime
+Version: 3.13.13
+URL: https://www.python.org/ftp/python/3.13.13/Python-3.13.13.tar.xz
+SHA256: 2ab91ff401783ccca64f75d10c882e957bdfd60e2bf5a72f8421793729b78a71
+
+Source: ninja
+Version: 1.13.2
+URL: https://github.com/ninja-build/ninja/archive/v1.13.2/ninja-1.13.2.tar.gz
+SHA256: 974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17
+
+Source: meson
+Version: 1.11.1
+URL: https://github.com/mesonbuild/meson/releases/download/1.11.1/meson-1.11.1.tar.gz
+SHA256: 6788ae299979643f8d841bcaf64352558436cae45a0355148a3aeeccf7913866
+
+Source: cmake
+Version: 3.31.7
+URL: https://cmake.org/files/v3.31/cmake-3.31.7.tar.gz
+SHA256: a6d2eb1ebeb99130dfe63ef5a340c3fdb11431cce3d7ca148524c125924cea68

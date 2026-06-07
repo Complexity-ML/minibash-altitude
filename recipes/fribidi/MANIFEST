@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-fribidi
+Version: 1.0.16
+Architecture: amd64
+Description: FriBidi Unicode bidirectional text library cross-built for Altitude

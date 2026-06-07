@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libcap
+Version: 2.76
+Architecture: amd64
+Description: Linux capabilities library for the Altitude desktop stack

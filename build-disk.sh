@@ -1,13 +1,27 @@
 #!/usr/bin/env bash
-# Build the disk-root artifacts:
+# Legacy RAM-root disk builder:
 #   out/minibash-rootfs.tar.gz  - the full root filesystem, extracted onto the
 #                                 target ext4 partition by the installer
 #   out/minibash-boot.cpio.gz   - a tiny boot initramfs (busybox + boot-init +
 #                                 storage/ext4 modules) that mounts the real
 #                                 root and switch_root's into it
 #
-# Unlike the RAM model, the full rootfs (incl. a desktop later) lives on disk.
+# Disabled by default because it reuses build.sh's reduced rootfs path. The
+# normal Altitude disk root must come from native signed .altpkg packages.
 set -euo pipefail
+
+if [ "${ALTITUDE_LEGACY_RESCUE:-0}" != "1" ]; then
+  cat >&2 <<'EOF'
+build-disk.sh is the old reduced-root disk builder and is disabled.
+
+Build a real Altitude rootfs instead:
+  scripts/build-gnome-stack.sh
+  scripts/build-altitude-rootfs.sh
+
+Use ALTITUDE_LEGACY_RESCUE=1 only to debug the rescue boot path.
+EOF
+  exit 1
+fi
 
 DISTRO_DIR="${DISTRO_DIR:-/work/minibash-linux}"
 OUT_DIR="${OUT_DIR:-$DISTRO_DIR/out}"

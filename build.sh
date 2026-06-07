@@ -12,6 +12,7 @@ KERNEL_MODULES_DIR="${KERNEL_MODULES_DIR:-$OUT_DIR/debian-modules}"
 REUSE_KERNEL="${REUSE_KERNEL:-/work/linux-bash-hybrid/out/bzImage}"
 BUILD_KERNEL="${BUILD_KERNEL:-0}"
 INCLUDE_DESKTOP="${INCLUDE_DESKTOP:-0}"
+ALTITUDE_PROFILE="${ALTITUDE_PROFILE:-rescue}"
 
 log() {
   printf '[minibash:build] %s\n' "$*"
@@ -57,7 +58,7 @@ copy_deb_package_files() {
   fi
   log "copying package files: $pkg"
   dpkg-query -L "$pkg" | while read -r src; do
-    [ -e "$src" ] || continue
+    [ -e "$src" ] || [ -L "$src" ] || continue
     [ "$src" = "/" ] && continue
     case "$src" in
       /usr/share/doc/*|/usr/share/man/*|/usr/share/lintian/*) continue ;;
@@ -101,6 +102,7 @@ install_busybox() {
                 nc ip ifconfig route hostname cat date ash vi umount \
                 free uptime top df whoami id groups cut wc syslogd logger \
                 mke2fs sync tar sha256sum chmod chown ln dd loadkmap chvt openvt; do
+    [ -e "$ROOTFS_WORK/bin/$applet" ] && continue
     ln -sf /bin/busybox "$ROOTFS_WORK/bin/$applet"
   done
 }
@@ -133,7 +135,27 @@ build_minit() {
 }
 
 prepare_rootfs() {
-  log "preparing rootfs"
+  case "$ALTITUDE_PROFILE" in
+    rescue|desktop) ;;
+    *) echo "unknown ALTITUDE_PROFILE=$ALTITUDE_PROFILE (rescue, desktop)" >&2; exit 1 ;;
+  esac
+  if [ "$INCLUDE_DESKTOP" = "1" ] && [ "${ALTITUDE_LEGACY_DEBIAN:-0}" != "1" ]; then
+    cat >&2 <<'EOF'
+INCLUDE_DESKTOP=1 is the old Debian runtime copy path.
+Altitude desktop must be built from native .altpkg recipes instead.
+Set ALTITUDE_LEGACY_DEBIAN=1 only for forensic comparison.
+EOF
+    exit 1
+  fi
+  if [ "$ALTITUDE_PROFILE" = "desktop" ] && [ "${ALTITUDE_LEGACY_DEBIAN:-0}" != "1" ]; then
+    cat >&2 <<'EOF'
+ALTITUDE_PROFILE=desktop is native-only now.
+Run scripts/build-gnome-stack.sh to build GNOME .altpkg packages, then assemble
+the disk root from the Altitude repository. The Debian desktop copy path is off.
+EOF
+    exit 1
+  fi
+  log "preparing rootfs profile=$ALTITUDE_PROFILE"
   rm -rf "$ROOTFS_WORK"
   mkdir -p "$ROOTFS_WORK"
   rsync -a "$ROOTFS_SRC"/ "$ROOTFS_WORK"/
@@ -175,6 +197,22 @@ prepare_rootfs() {
   # works on console boots too, not just the desktop.
   copy_deb_package_files firmware-iwlwifi
   copy_deb_package_files wireless-regdb
+  # The disk image must boot real laptops, not just QEMU. Copy the complete
+  # firmware tree, including real symlink targets that Debian package ownership
+  # lists do not reliably include across releases.
+  if [ -d /usr/lib/firmware ]; then
+    mkdir -p "$ROOTFS_WORK/usr/lib/firmware"
+    cp -a /usr/lib/firmware/. "$ROOTFS_WORK/usr/lib/firmware/"
+  fi
+  # Avoid /etc/alternatives dependencies in the standalone rootfs.
+  if [ -f /usr/lib/firmware/regulatory.db-upstream ]; then
+    cp -L /usr/lib/firmware/regulatory.db-upstream \
+      "$ROOTFS_WORK/usr/lib/firmware/regulatory.db"
+  fi
+  if [ -f /usr/lib/firmware/regulatory.db.p7s-upstream ]; then
+    cp -L /usr/lib/firmware/regulatory.db.p7s-upstream \
+      "$ROOTFS_WORK/usr/lib/firmware/regulatory.db.p7s"
+  fi
   copy_cmd_with_libs extlinux
   copy_cmd_with_libs syslinux
   copy_cmd_with_libs insmod

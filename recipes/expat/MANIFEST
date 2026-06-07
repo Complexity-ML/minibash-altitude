@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-expat
+Version: 2.7.3
+Architecture: amd64
+Description: Expat XML parser runtime and development files for Altitude D-Bus

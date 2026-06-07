@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-eudev
+Version: 3.2.14
+Architecture: amd64
+Description: eudev device manager and libudev compatibility for Altitude

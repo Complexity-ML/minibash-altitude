@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libxkbcommon
+Version: 1.11.0
+Architecture: amd64
+Description: XKB keymap handling library cross-built for Altitude Wayland

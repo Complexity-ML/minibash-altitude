@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-wayland-protocols
+Version: 1.48
+Architecture: amd64
+Description: Extended Wayland protocol specifications for Altitude graphics

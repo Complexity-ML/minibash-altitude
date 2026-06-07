@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-datrie
+Version: 0.2.13
+Architecture: amd64
+Description: Double-array trie library and trietool for Altitude text shaping

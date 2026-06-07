@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-udisks
+Version: 2.11.1
+Architecture: amd64
+Description: Disk management daemon, tools and libraries for Altitude

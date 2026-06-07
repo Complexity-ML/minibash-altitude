@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-wayland
+Version: 1.25.0
+Architecture: amd64
+Description: Wayland client/server libraries and forge scanner for Altitude

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-cairo
+Version: 1.18.4
+Architecture: amd64
+Description: Cairo 2D graphics library cross-built for the Altitude UI stack

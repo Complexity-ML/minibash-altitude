@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-zlib
+Version: 1.3.1
+Architecture: amd64
+Description: Compression library for Altitude base and desktop builds

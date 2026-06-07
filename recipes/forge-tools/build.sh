@@ -6,10 +6,22 @@ OUT="${ALTITUDE_RECIPE_OUT:-$ROOT/out/source-packages}"
 WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/forge-tools}"
 PREFIX="/opt/altitude/forge"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
-COMPILER="${CC:-cc}"
+TARGET="${ALTITUDE_TARGET:-x86_64-altitude-linux-gnu}"
+COMPILER="${CC:-}"
+if [ -z "$COMPILER" ]; then
+  if command -v cc >/dev/null 2>&1; then
+    COMPILER=cc
+  elif command -v "$TARGET-gcc" >/dev/null 2>&1; then
+    COMPILER="$TARGET-gcc"
+  else
+    COMPILER=gcc
+  fi
+fi
 M4_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" m4)"
 BISON_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" bison)"
 GAWK_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gawk)"
+GPERF_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gperf)"
+MAKE_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" make)"
 FLEX_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" flex)"
 PKGCONF_TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" pkgconf)"
 
@@ -25,6 +37,9 @@ build_tool() {
   tar -xf "$tarball" -C "$source" --strip-components=1
   (
     cd "$build"
+    CC="$COMPILER" \
+    CC_FOR_BUILD="$COMPILER" \
+    BUILD_CC="$COMPILER" \
     "$source/configure" \
       --prefix="$PREFIX" \
       --disable-nls
@@ -37,6 +52,8 @@ build_tool m4 "$M4_TARBALL"
 export PATH="$WORK/payload$PREFIX/bin:$PATH"
 build_tool bison "$BISON_TARBALL"
 build_tool gawk "$GAWK_TARBALL"
+build_tool gperf "$GPERF_TARBALL"
+build_tool make "$MAKE_TARBALL"
 build_tool flex "$FLEX_TARBALL"   # kernel kconfig/dtc need flex (host tool)
 build_tool pkgconf "$PKGCONF_TARBALL"   # provides pkg-config (kernel libelf/libcrypto discovery)
 ln -sf pkgconf "$WORK/payload$PREFIX/bin/pkg-config"
@@ -51,6 +68,8 @@ find "$WORK/payload$PREFIX" -type f -perm -0100 -exec strip --strip-unneeded {} 
     "m4:$M4_TARBALL" \
     "bison:$BISON_TARBALL" \
     "gawk:$GAWK_TARBALL" \
+    "gperf:$GPERF_TARBALL" \
+    "make:$MAKE_TARBALL" \
     "flex:$FLEX_TARBALL" \
     "pkgconf:$PKGCONF_TARBALL"; do
     name="${entry%%:*}"
@@ -58,6 +77,10 @@ find "$WORK/payload$PREFIX" -type f -perm -0100 -exec strip --strip-unneeded {} 
     echo "$name-SHA256: $(sha256sum "$tarball" | awk '{print $1}')"
   done
 } > "$WORK/payload/usr/share/altitude/sources/forge-tools.build"
+
+if [ -d "$PREFIX" ]; then
+  cp -a "$WORK/payload$PREFIX/." "$PREFIX/"
+fi
 
 bash "$ROOT/rootfs/bin/altpkg-build" \
   "$ROOT/recipes/forge-tools/MANIFEST" "$WORK/payload" \

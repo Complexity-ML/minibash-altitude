@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libseccomp
+Version: 2.6.0
+Architecture: amd64
+Description: Seccomp syscall filtering library for the Altitude desktop stack

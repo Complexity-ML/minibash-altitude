@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libepoxy
+Version: 1.5.10
+Architecture: amd64
+Description: Epoxy OpenGL dispatch library cross-built for Altitude Wayland

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-elogind
+Version: 257.16
+Architecture: amd64
+Description: Standalone login and seat manager for the Altitude desktop

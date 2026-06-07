@@ -1,0 +1,46 @@
+# Proposed SOURCES.lock entries for the GNOME session and shell.
+#
+# These stanzas are intentionally kept out of sources/SOURCES.lock. Add them
+# only after review. The versions form a compatible GNOME 48 shell stack;
+# gnome-desktop retains its independently maintained 44.x API series.
+#
+# Intended build order:
+#   gsettings-desktop-schemas
+#   gnome-desktop
+#   mutter
+#   gnome-shell
+#   gnome-session
+#
+# Additional target dependencies expected from adjacent recipe groups include
+# GdkPixbuf, GTK 3, Graphene, ATK/AT-SPI, xkeyboard-config, iso-codes, libseccomp,
+# libxkbcommon, colord, lcms2, libei, libdisplay-info, libudev, gudev, libinput,
+# GObject Introspection, GJS, Evolution Data Server, GCR, polkit, libxml2,
+# PulseAudio, ALSA, JSON-GLib, and systemd/libsystemd.
+#
+# Mutter and GNOME Shell also need native forge tools for introspection and
+# resource generation, plus ALTITUDE_EXE_WRAPPER to run target scanner helpers.
+
+Source: gsettings-desktop-schemas
+Version: 48.0
+URL: https://download.gnome.org/sources/gsettings-desktop-schemas/48/gsettings-desktop-schemas-48.0.tar.xz
+SHA256: e68f155813bf18f865a8b2c8e9d473588b6ccadcafbb666ab788857c6c2d1bd3
+
+Source: gnome-desktop
+Version: 44.5
+URL: https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz
+SHA256: 20e0995a6e3a03e8c1026c5a27bc3f45e69ffcc392ad743dcab6107a541d232f
+
+Source: mutter
+Version: 48.8
+URL: https://download.gnome.org/sources/mutter/48/mutter-48.8.tar.xz
+SHA256: a483f91f75c16368d388179ecb855fcdb35db9c628f35b315b717153f99681a9
+
+Source: gnome-shell
+Version: 48.8
+URL: https://download.gnome.org/sources/gnome-shell/48/gnome-shell-48.8.tar.xz
+SHA256: cb9b7d86cf362530e648e68caaf109a32af4e832874a26791ca8789773efd233
+
+Source: gnome-session
+Version: 48.0
+URL: https://download.gnome.org/sources/gnome-session/48/gnome-session-48.0.tar.xz
+SHA256: dd909fbc5b22cdbdb2fc4df1a47d78d1b5943ccc5e61e6a20a1846246347c417

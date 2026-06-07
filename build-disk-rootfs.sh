@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
-# Build the Altitude disk root filesystem. A disposable bootstrap forge provides
-# third-party binaries; the delivered root is rebuilt only from signed Altitude
-# packages and contains neither apt nor dpkg state.
+# Legacy Debian bootstrap rootfs builder.
 #
-# Unlike the RAM model (hand-copied files), this is a full Debian install on
-# disk -> heavy desktops (GNOME) become a live `apt install` over SSH afterwards.
+# This path is intentionally disabled by default. Altitude disk images must be
+# assembled from native signed .altpkg packages, not from debootstrap/apt.
 #
 # Output: $ROOTFS_TGZ (the disk root) + (reuses build-disk.sh's boot initramfs).
 set -euo pipefail
+
+if [ "${ALTITUDE_LEGACY_DEBIAN:-0}" != "1" ]; then
+  cat >&2 <<'EOF'
+build-disk-rootfs.sh is the legacy Debian bootstrap path and is disabled.
+
+Use native Altitude packages instead:
+  scripts/build-gnome-stack.sh
+  scripts/build-altitude-rootfs.sh
+
+For forensic comparison only, rerun with ALTITUDE_LEGACY_DEBIAN=1.
+EOF
+  exit 1
+fi
 
 DISTRO_DIR="${DISTRO_DIR:-/work/minibash-linux}"
 OUT_DIR="${OUT_DIR:-$DISTRO_DIR/out}"

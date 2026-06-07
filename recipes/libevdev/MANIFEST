@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libevdev
+Version: 1.13.4
+Architecture: amd64
+Description: Linux evdev wrapper library for the Altitude input stack

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gsettings-desktop-schemas
+Version: 48.0
+Architecture: amd64
+Description: GNOME desktop GSettings schemas for Altitude

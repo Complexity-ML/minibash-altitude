@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libgudev
+Version: 238
+Architecture: amd64
+Description: GObject wrapper for libudev for the Altitude desktop stack

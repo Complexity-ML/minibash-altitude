@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gnome-session
+Version: 48.0
+Architecture: amd64
+Description: GNOME session manager and Wayland session data for Altitude

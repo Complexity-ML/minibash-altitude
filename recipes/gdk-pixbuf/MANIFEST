@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gdk-pixbuf
+Version: 2.44.6
+Architecture: amd64
+Description: GdkPixbuf image loading library cross-built for Altitude

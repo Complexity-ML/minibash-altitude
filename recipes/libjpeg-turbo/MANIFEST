@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libjpeg-turbo
+Version: 3.1.2
+Architecture: amd64
+Description: JPEG codec library cross-built for the Altitude GTK stack

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-glib
+Version: 2.84.4
+Architecture: amd64
+Description: GLib core runtime, GObject and GIO cross-built for Altitude

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-graphene
+Version: 1.10.8
+Architecture: amd64
+Description: Graphene geometry library cross-built for the Altitude desktop

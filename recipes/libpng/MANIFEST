@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libpng
+Version: 1.6.50
+Architecture: amd64
+Description: PNG reference library cross-built for the Altitude UI stack

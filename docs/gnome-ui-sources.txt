@@ -1,0 +1,56 @@
+# Proposed source locks: Altitude text and GTK UI stack
+#
+# These entries are intentionally kept out of sources/SOURCES.lock until the
+# shared lock file is merged by its owner. They use the exact stanza format
+# expected by scripts/source-fetch.sh.
+#
+# Intended build order:
+#   libpng, freetype, fontconfig, pixman, cairo, harfbuzz, pango, gtk4
+#
+# External sysroot prerequisites owned by other recipe groups include zlib,
+# expat, GLib, Fribidi, libthai, GdkPixbuf, Graphene, libepoxy, Wayland,
+# wayland-protocols, libxkbcommon, and the Meson/Ninja host tools.
+#
+# FreeType is bootstrapped without HarfBuzz to avoid the upstream circular
+# dependency. A later FreeType rebuild with HarfBuzz can be added as a separate
+# integration pass if subpixel shaping through FreeType requires it.
+
+Source: libpng
+Version: 1.6.50
+URL: https://download.sourceforge.net/libpng/libpng-1.6.50.tar.xz
+SHA256: 4df396518620a7aa3651443e87d1b2862e4e88cad135a8b93423e01706232307
+
+Source: freetype
+Version: 2.13.3
+URL: https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz
+SHA256: 0550350666d427c74daeb85d5ac7bb353acba5f76956395995311a9c6f063289
+
+Source: fontconfig
+Version: 2.16.0
+URL: https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.16.0.tar.xz
+SHA256: 6a33dc555cc9ba8b10caf7695878ef134eeb36d0af366041f639b1da9b6ed220
+
+Source: pixman
+Version: 0.46.4
+URL: https://www.x.org/releases/individual/lib/pixman-0.46.4.tar.xz
+SHA256: a098c33924754ad43f981b740f6d576c70f9ed1006e12221b1845431ebce1239
+
+Source: cairo
+Version: 1.18.4
+URL: https://cairographics.org/releases/cairo-1.18.4.tar.xz
+SHA256: 445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb
+
+Source: harfbuzz
+Version: 12.3.2
+URL: https://github.com/harfbuzz/harfbuzz/releases/download/12.3.2/harfbuzz-12.3.2.tar.xz
+SHA256: 6f6db164359a2da5a84ef826615b448b33e6306067ad829d85d5b0bf936f1bb8
+
+Source: pango
+Version: 1.56.4
+URL: https://download.gnome.org/sources/pango/1.56/pango-1.56.4.tar.xz
+SHA256: 17065e2fcc5f5a5bdbffc884c956bfc7c451a96e8c4fb2f8ad837c6413cb5a01
+
+Source: gtk4
+Version: 4.20.3
+URL: https://download.gnome.org/sources/gtk/4.20/gtk-4.20.3.tar.xz
+SHA256: 2873f2903088a66c71173ea2ed85ffae266a66b972c3a4842bbb2f6f187ec153

@@ -1,0 +1,55 @@
+#!/bin/sh
+# Compatibility wrapper around BusyBox ip for common iproute2 muscle memory.
+set -u
+
+bb=/bin/busybox
+family=
+brief=false
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -4|-6)
+      family="$1"
+      shift
+      ;;
+    -br|-brief|--brief)
+      brief=true
+      shift
+      ;;
+    a|addr|address)
+      shift
+      if [ "$brief" = true ]; then
+        # BusyBox has no -brief mode. Provide the useful subset used at the
+        # console: interface, state approximation, and first IPv4/IPv6 address.
+        "$bb" ip ${family:+"$family"} addr show "$@" |
+          awk '
+            /^[0-9]+: / {
+              if (name != "") print name, state, addr
+              name=$2
+              sub(/:$/, "", name)
+              state=($0 ~ /UP/) ? "UP" : "DOWN"
+              addr=""
+            }
+            / inet / && addr == "" { addr=$2 }
+            / inet6 / && addr == "" { addr=$2 }
+            END { if (name != "") print name, state, addr }
+          '
+      else
+        exec "$bb" ip ${family:+"$family"} addr show "$@"
+      fi
+      ;;
+    r|ro|route)
+      shift
+      exec "$bb" ip ${family:+"$family"} route "$@"
+      ;;
+    l|li|link)
+      shift
+      exec "$bb" ip link "$@"
+      ;;
+    *)
+      exec "$bb" ip ${family:+"$family"} "$@"
+      ;;
+  esac
+done
+
+exec "$bb" ip ${family:+"$family"} addr show

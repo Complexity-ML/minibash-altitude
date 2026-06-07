@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gtk4
+Version: 4.20.3
+Architecture: amd64
+Description: GTK 4 graphical toolkit cross-built for the Altitude desktop

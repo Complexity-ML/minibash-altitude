@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-harfbuzz
+Version: 12.3.2
+Architecture: amd64
+Description: HarfBuzz OpenType shaping engine cross-built for Altitude

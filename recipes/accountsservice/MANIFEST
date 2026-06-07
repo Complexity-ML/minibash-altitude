@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-accountsservice
+Version: 26.13.3
+Architecture: amd64
+Description: D-Bus user account service and client library for Altitude

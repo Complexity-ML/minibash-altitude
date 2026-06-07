@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Host libelf (from elfutils) + zlib for the Altitude forge. The kernel's
-# objtool links libelf (gelf.h), which the minimal Omen lacks. We build them
+# objtool links libelf (gelf.h), which the rescue environment lacks. We build them
 # from locked sources into /opt/altitude/forge so objtool builds and the kernel
 # stays full (ORC unwinder + mitigations), with no Debian -dev packages.
 set -euo pipefail

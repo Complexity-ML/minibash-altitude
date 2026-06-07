@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libxml2
+Version: 2.12.10
+Architecture: amd64
+Description: XML parser library cross-built for the Altitude GNOME stack

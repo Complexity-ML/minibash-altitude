@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Host OpenSSL for the Altitude forge. The kernel's certs/extract-cert (module
 # signing / system trusted keyring) links libcrypto and includes <openssl/*.h>,
-# which the minimal Omen lacks. Built from locked source into /opt/altitude/forge
+# which the rescue environment lacks. Built from locked source into /opt/altitude/forge
 # so the kernel keeps module signing -- no Debian -dev packages.
 set -euo pipefail
 

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libthai
+Version: 0.1.30
+Architecture: amd64
+Description: LibThai language support library cross-built for Altitude

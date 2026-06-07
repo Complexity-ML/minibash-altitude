@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-mtdev
+Version: 1.1.7
+Architecture: amd64
+Description: Multitouch protocol translation library for Altitude

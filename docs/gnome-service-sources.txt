@@ -1,0 +1,27 @@
+# Proposed SOURCES.lock entries for native desktop system services.
+# These are intentionally not added to sources/SOURCES.lock here.
+
+Source: elogind
+Version: 257.16
+URL: https://codeload.github.com/elogind/elogind/tar.gz/refs/tags/v257.16
+SHA256: 3c8146409bfb9daa77f272212c2b0bf0ae727c782ec87ece0d2d25e0e5bf5f4c
+
+Source: polkit
+Version: 126
+URL: https://codeload.github.com/polkit-org/polkit/tar.gz/refs/tags/126
+SHA256: 2814a7281989f6baa9e57bd33bbc5e148827e2721ccef22aaf28ab2b376068e8
+
+Source: accountsservice
+Version: 26.13.3
+URL: https://gitlab.freedesktop.org/accountsservice/accountsservice/-/archive/26.13.3/accountsservice-26.13.3.tar.gz
+SHA256: 90b84424cd454ec71e3c1530f967ca719be668b9a431af1bc1ff7eb5ba1cad7e
+
+Source: upower
+Version: 1.91.2
+URL: https://gitlab.freedesktop.org/upower/upower/-/archive/v1.91.2/upower-v1.91.2.tar.gz
+SHA256: cd9a3a3f5e0aa21eac131253228757bbdc90ecd39768f46c325754e32daa3083
+
+Source: udisks
+Version: 2.11.1
+URL: https://github.com/storaged-project/udisks/releases/download/udisks-2.11.1/udisks-2.11.1.tar.bz2
+SHA256: e88c52bae02fa13414604bbef42c6bb91c2e24177ee0057ed55c6bd7451bcb6d

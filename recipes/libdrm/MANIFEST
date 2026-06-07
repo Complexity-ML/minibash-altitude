@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libdrm
+Version: 2.4.134
+Architecture: amd64
+Description: DRM userspace libraries cross-built for Altitude graphics

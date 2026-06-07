@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gcc-cxx
+Version: 14.2.0
+Architecture: amd64
+Description: C++ compiler and libstdc++ support for the Altitude toolchain

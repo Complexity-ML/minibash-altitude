@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gobject-introspection
+Version: 1.84.0
+Architecture: amd64
+Description: GObject introspection scanner, compiler, and libgirepository for Altitude
