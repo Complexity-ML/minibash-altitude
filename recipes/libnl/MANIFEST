@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libnl
+Version: 3.11.0
+Architecture: amd64
+Description: libnl (netlink library) cross-built by the Altitude toolchain (wpa_supplicant nl80211)

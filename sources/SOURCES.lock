@@ -82,3 +82,13 @@ Source: pkgconf
 Version: 2.3.0
 URL: https://distfiles.ariadne.space/pkgconf/pkgconf-2.3.0.tar.xz
 SHA256: 3a9080ac51d03615e7c1910a0a2a8df08424892b5f13b0628a204d3fcce0ea8b
+
+Source: libnl
+Version: 3.11.0
+URL: https://github.com/thom311/libnl/releases/download/libnl3_11_0/libnl-3.11.0.tar.gz
+SHA256: 2a56e1edefa3e68a7c00879496736fdbf62fc94ed3232c0baba127ecfa76874d
+
+Source: wpa_supplicant
+Version: 2.11
+URL: https://w1.fi/releases/wpa_supplicant-2.11.tar.gz
+SHA256: 912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
