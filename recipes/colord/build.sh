@@ -25,7 +25,8 @@ export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG" meson ninja; do
   command -v "$tool" >/dev/null || { echo "colord: missing build tool: $tool" >&2; exit 1; }
 done
-for dep in gio-2.0 glib-2.0 gmodule-2.0 gio-unix-2.0 gudev-1.0 libudev lcms2; do
+for dep in gio-2.0 glib-2.0 gmodule-2.0 gio-unix-2.0 gusb gudev-1.0 \
+  libudev lcms2 polkit-gobject-1 sqlite3; do
   "$PKG_CONFIG" --exists "$dep" || { echo "colord: target dependency missing: $dep" >&2; exit 1; }
 done
 
@@ -34,16 +35,35 @@ mkdir -p "$WORK/source" "$WORK/build" "$PAYLOAD/usr/share/altitude/sources" "$OU
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 sed -i \
   -e "s/sqlite = dependency('sqlite3')/sqlite = dependency('sqlite3', required : false)/" \
-  -e "s/gusb = dependency('gusb', version : '>= 0.2.7')/gusb = dependency('gusb', required : false)/" \
   -e "s/subdir('po')/# subdir('po')/" \
   -e "s/subdir('client')/# subdir('client')/" \
   -e "s/subdir('contrib')/# subdir('contrib')/" \
-  -e "s/subdir('data')/# subdir('data')/" \
   -e "s/subdir('man')/# subdir('man')/" \
   "$WORK/source/meson.build"
 sed -i "/meson.add_install_script('meson_post_install.sh'/,/localstatedir, get_option('daemon_user'))/d" \
   "$WORK/source/meson.build"
 sed -i "s/subdir('colorhug')/# subdir('colorhug')/" "$WORK/source/lib/meson.build"
+sed -i \
+  -e "s/subdir('cmf')/# subdir('cmf')/" \
+  -e "s/subdir('figures')/# subdir('figures')/" \
+  -e "s/subdir('illuminant')/# subdir('illuminant')/" \
+  -e "s/subdir('profiles')/# subdir('profiles')/" \
+  -e "s/subdir('ref')/# subdir('ref')/" \
+  -e "s/subdir('tests')/# subdir('tests')/" \
+  -e "s/subdir('ti1')/# subdir('ti1')/" \
+  "$WORK/source/data/meson.build"
+perl -0pi -e 's/\n <gresource prefix="\/org\/freedesktop\/colord\/profiles">.*?<\/gresource>\n/\n/s' \
+  "$WORK/source/src/colord.gresource.xml"
+sed -i \
+  -e "s/subdir('plugins')/# subdir('plugins')/" \
+  -e "s/subdir('sensors')/# subdir('sensors')/" \
+  "$WORK/source/src/meson.build"
+perl -0pi -e "s/source_dir : \\[\\n    '\\.',\\n    '\\.\\.\\/data\\/profiles',\\n  \\],/source_dir : ['.'],/s" \
+  "$WORK/source/src/meson.build"
+perl -0pi -e "s/,\\n  dependencies : generated_iccs//s" \
+  "$WORK/source/src/meson.build"
+perl -0pi -e "s/#newer polkit has the ITS rules included.*?endif/configure_file(\n  input: policy_in,\n  output: 'org.freedesktop.color.policy',\n  copy: true,\n  install: true,\n  install_dir: join_paths(datadir, 'polkit-1', 'actions')\n)/s" \
+  "$WORK/source/policy/meson.build"
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -70,8 +90,9 @@ EOF
 
 meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
+  --libexecdir=libexec --localstatedir=/var --sysconfdir=/etc \
   --buildtype=release --wrap-mode=nofallback \
-  -Ddaemon=false -Dsession_example=false -Dbash_completion=false \
+  -Ddaemon=true -Dsession_example=false -Dbash_completion=false \
   -Dudev_rules=false -Dsystemd=false -Dargyllcms_sensor=false \
   -Dsane=false -Dintrospection=false -Dvapi=false \
   -Dprint_profiles=false -Dtests=false -Dinstalled_tests=false \
@@ -84,7 +105,7 @@ cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
   echo "Source: colord"
   echo "Version: $VERSION"
   echo "SHA256: $(sha256sum "$TARBALL" | awk '{print $1}')"
-  echo "Build: Meson client library only cross $TARGET"
+  echo "Build: Meson client library and D-Bus daemon cross $TARGET"
   echo "Compiler: $("$CC" --version | head -1)"
 } > "$PAYLOAD/usr/share/altitude/sources/colord.build"
 

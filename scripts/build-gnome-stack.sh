@@ -56,7 +56,7 @@ build_layer x11 libx11 libxext libxfixes
 build_layer graphics mesa
 build_layer image-primitives libpng
 build_layer ui-primitives freetype pixman
-build_layer fonts fontconfig
+build_layer fonts fontconfig cantarell-fonts
 build_layer text-primitives fribidi datrie
 build_layer thai libthai
 build_layer image gdk-pixbuf libtiff libjpeg-turbo
@@ -70,7 +70,7 @@ build_layer shaping harfbuzz
 build_layer drawing cairo
 build_layer text pango
 build_layer toolkit gtk4
-build_layer icon-theme hicolor-icon-theme
+build_layer icon-theme hicolor-icon-theme adwaita-icon-theme
 build_layer shell-schemas gsettings-desktop-schemas
 build_layer desktop-data xkeyboard-config iso-codes
 build_layer sandbox libseccomp
@@ -82,9 +82,11 @@ build_layer login elogind
 build_layer input-primitives libevdev mtdev
 build_layer input libinput
 build_layer introspection gobject-introspection
+build_layer usb libusb libgusb
 build_layer color-primitives lcms2
 build_layer compositor-primitives atk at-spi2-core libei libdisplay-info
 build_layer color colord
+build_layer media gstreamer
 build_layer shell-compositor mutter
 build_layer rust-bootstrap forge-rust forge-cbindgen
 build_layer css-tools forge-sassc

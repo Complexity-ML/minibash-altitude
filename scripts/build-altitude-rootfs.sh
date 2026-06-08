@@ -41,17 +41,27 @@ desktop_packages=(
   altitude-cmake
   altitude-dbus
   altitude-glib
+  altitude-cantarell-fonts
   altitude-wayland
   altitude-wayland-protocols
   altitude-libdrm
   altitude-mesa
   altitude-gtk4
   altitude-hicolor-icon-theme
+  altitude-adwaita-icon-theme
   altitude-gsettings-desktop-schemas
   altitude-gnome-desktop
+  altitude-sqlite
+  altitude-libusb
+  altitude-libgusb
+  altitude-lcms2
+  altitude-eudev
+  altitude-libgudev
   altitude-json-c
   altitude-accountsservice
   altitude-gdm
+  altitude-colord
+  altitude-gstreamer
   altitude-geoclue
   altitude-geocode-glib
   altitude-libgweather

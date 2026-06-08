@@ -71,6 +71,7 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export XDG_SESSION_TYPE=x11
 export GDK_BACKEND=x11
 export LIBGL_ALWAYS_SOFTWARE=1
+export TZ="${TZ:-UTC}"
 EOF
   cat > /home/minibash/.xsession <<'EOF'
 #!/bin/sh
@@ -78,7 +79,7 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export XDG_SESSION_TYPE=x11
 export GDK_BACKEND=x11
 export LIBGL_ALWAYS_SOFTWARE=1
-export GTK_A11Y=none
+export TZ="${TZ:-UTC}"
 xset dpms force on 2>/dev/null || true
 xset s off -dpms 2>/dev/null || true
 xrandr --output eDP-1 --primary --auto --preferred --pos 0x0 --rotate normal 2>/dev/null || true

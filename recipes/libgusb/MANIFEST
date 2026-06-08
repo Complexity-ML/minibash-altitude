@@ -1,0 +1,5 @@
+Package: altitude-libgusb
+Name: altitude-libgusb
+Version: 0.4.9
+Architecture: amd64
+Description: GObject USB wrapper library for Altitude desktop services

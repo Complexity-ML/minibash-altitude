@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gstreamer
+Version: 1.26.11
+Architecture: amd64
+Description: GStreamer core runtime, tools, plugins, and introspection data for Altitude

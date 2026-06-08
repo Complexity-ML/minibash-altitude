@@ -28,6 +28,7 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   uid="$(id -u 2>/dev/null || echo 0)"
   export XDG_RUNTIME_DIR="/run/user/$uid"
 fi
+export TZ="${TZ:-UTC}"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 

@@ -1,0 +1,5 @@
+Package: altitude-libusb
+Name: altitude-libusb
+Version: 1.0.29
+Architecture: amd64
+Description: USB userspace access library for Altitude desktop services
