@@ -21,6 +21,7 @@ TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" polkit)"
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64"
 
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || { echo "polkit: missing build tool: $tool" >&2; exit 1; }
@@ -58,7 +59,8 @@ cpu = 'x86_64'
 endian = 'little'
 
 [built-in options]
-c_args = ['-O2', '-pipe']
+c_args = ['-O2', '-pipe', '-I$SYSROOT/usr/include/elogind']
+c_link_args = ['-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64']
 EOF
 
 meson setup "$WORK/build" "$WORK/source" \
