@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-gdm
+Version: 48.0
+Architecture: amd64
+Description: GDM client library and introspection data for GNOME Shell

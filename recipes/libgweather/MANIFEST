@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libgweather
+Version: 4.4.4
+Architecture: amd64
+Description: GNOME Weather library and introspection data

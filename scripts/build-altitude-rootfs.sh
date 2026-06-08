@@ -47,15 +47,19 @@ desktop_packages=(
   altitude-gtk4
   altitude-gsettings-desktop-schemas
   altitude-gnome-desktop
+  altitude-json-c
+  altitude-accountsservice
+  altitude-gdm
+  altitude-geoclue
+  altitude-geocode-glib
+  altitude-libgweather
   altitude-mutter
   altitude-gnome-shell
   altitude-gnome-session
   altitude-elogind
   altitude-polkit
-  # Desktop service daemons are tracked as recipes, but are not hard
-  # requirements for the first non-minimal GNOME Shell image yet:
-  # accountsservice currently needs json-c, and udisks/upower need their
-  # own service integration before they are useful in Altitude's init model.
+  # upower and udisks are tracked as desktop service recipes, but still need
+  # service integration before they are useful in Altitude's init model.
 )
 
 packages=("${base_packages[@]}")
@@ -76,6 +80,14 @@ done
 bash "$ROOT/scripts/assemble-altitude-rootfs.sh" "$REPO" "$DEST" "${packages[@]}"
 mkdir -p "$DEST"/{dev,proc,run,sys,tmp}
 chmod 1777 "$DEST/tmp"
+if command -v glib-compile-schemas >/dev/null 2>&1 &&
+   [ -d "$DEST/usr/share/glib-2.0/schemas" ]; then
+  glib-compile-schemas "$DEST/usr/share/glib-2.0/schemas"
+elif [ -x "$DEST/usr/bin/glib-compile-schemas" ] &&
+     [ -d "$DEST/usr/share/glib-2.0/schemas" ]; then
+  "$DEST/usr/bin/glib-compile-schemas" "$DEST/usr/share/glib-2.0/schemas" ||
+    echo "warning: could not compile GSettings schemas in $DEST" >&2
+fi
 
 tar_args=(-czf "$ROOTFS_TGZ" -C "$DEST" .)
 if tar --help 2>&1 | grep -q -- '--owner'; then

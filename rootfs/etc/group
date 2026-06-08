@@ -1,4 +1,5 @@
 root:x:0:
+messagebus:x:81:
 minibash:x:1000:
 video:x:44:minibash
 input:x:101:minibash

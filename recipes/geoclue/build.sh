@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${ALTITUDE_RECIPE_OUT:-$ROOT/out/source-packages}"
-WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/gnome-desktop}"
-VERSION=44.5
+WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/geoclue}"
+VERSION=2.7.2
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
 FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
@@ -17,30 +17,29 @@ STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 READELF="$TOOLCHAIN/bin/$TARGET-readelf"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
-TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gnome-desktop)"
+TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" geoclue)"
 
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 
 for tool in "$CC" "$AR" "$STRIP" "$READELF" "$PKG_CONFIG"; do
-  [ -x "$tool" ] || { echo "gnome-desktop: missing build tool: $tool" >&2; exit 1; }
+  [ -x "$tool" ] || { echo "geoclue: missing build tool: $tool" >&2; exit 1; }
 done
 for tool in meson ninja; do
   command -v "$tool" >/dev/null ||
-    { echo "gnome-desktop: missing forge tool: $tool" >&2; exit 1; }
+    { echo "geoclue: missing host build tool: $tool" >&2; exit 1; }
 done
-for dep in gdk-pixbuf-2.0 gtk4 glib-2.0 gio-2.0 gio-unix-2.0 \
-  gobject-introspection-1.0 gsettings-desktop-schemas fontconfig \
-  xkeyboard-config iso-codes libseccomp; do
+for dep in gio-2.0 gio-unix-2.0 glib-2.0 gobject-introspection-1.0; do
   "$PKG_CONFIG" --exists "$dep" ||
-    { echo "gnome-desktop: target dependency missing from $SYSROOT: $dep" >&2; exit 1; }
+    { echo "geoclue: target dependency missing: $dep" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
 mkdir -p "$WORK/source" "$WORK/build" "$WORK/tools" \
   "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+
 cat > "$WORK/tools/ldd" <<EOF
 #!/bin/sh
 "$READELF" -d "\$1" 2>/dev/null | awk '
@@ -54,8 +53,9 @@ cat > "$WORK/tools/ldd" <<EOF
 EOF
 chmod +x "$WORK/tools/ldd"
 export PATH="$WORK/tools:$PATH"
-sed -i "s/libgnome_rr_gir = ''/libgnome_rr_gir = []/" \
-  "$WORK/source/libgnome-desktop/gnome-rr/meson.build"
+
+perl -0pi -e "s/subdir\\('data'\\)\\nsubdir\\('demo'\\)\\nsubdir\\('po'\\)/# data, demo and translations are service packaging layers.\\n/s" \
+  "$WORK/source/meson.build"
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -77,32 +77,34 @@ endian = 'little'
 
 [built-in options]
 c_args = ['-O2', '-pipe']
-c_link_args = ['-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64']
+c_link_args = ['-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64', '-Wl,-rpath-link,$SYSROOT/lib', '-Wl,-rpath-link,$SYSROOT/lib64']
 EOF
 
 meson setup "$WORK/build" "$WORK/source" \
-  --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
-  --buildtype=release --wrap-mode=nofallback \
-  -Ddesktop_docs=false -Ddebug_tools=false -Dintrospection=true \
-  -Dudev=disabled -Dsystemd=disabled -Dgtk_doc=false \
-  -Dinstalled_tests=false -Dbuild_gtk4=true -Dlegacy_library=false
+  --cross-file="$WORK/cross.ini" \
+  --prefix=/usr --libdir=lib --libexecdir=libexec \
+  --buildtype=release --default-library=both --wrap-mode=nofallback \
+  -Dlibgeoclue=true -Dintrospection=true -Dvapi=false -Dgtk-doc=false \
+  -Denable-backend=false -Ddemo-agent=false \
+  -D3g-source=false -Dcdma-source=false -Dmodem-gps-source=false \
+  -Dnmea-source=false -Dcompass=false
+meson compile -C "$WORK/build"
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
 find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
   while IFS= read -r -d '' file; do
     "$STRIP" --strip-unneeded "$file" 2>/dev/null || true
   done
-install -d "$SYSROOT/usr"
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 
 {
-  echo "Source: gnome-desktop"
+  echo "Source: geoclue"
   echo "Version: $VERSION"
   echo "SHA256: $(sha256sum "$TARBALL" | awk '{print $1}')"
-  echo "Build: GTK 4, no GTK 3 legacy library, no systemd/udev, cross $TARGET"
+  echo "Build: libgeoclue client library and Geoclue-2.0 typelib cross $TARGET"
   echo "Compiler: $("$CC" --version | head -1)"
-} > "$PAYLOAD/usr/share/altitude/sources/gnome-desktop.build"
+} > "$PAYLOAD/usr/share/altitude/sources/geoclue.build"
 
 bash "$ROOT/rootfs/bin/altpkg-build" \
-  "$ROOT/recipes/gnome-desktop/MANIFEST" "$PAYLOAD" \
-  "$OUT/altitude-gnome-desktop-$VERSION-amd64.altpkg"
+  "$ROOT/recipes/geoclue/MANIFEST" "$PAYLOAD" \
+  "$OUT/altitude-geoclue-$VERSION-amd64.altpkg"

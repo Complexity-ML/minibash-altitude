@@ -408,6 +408,11 @@ Version: 48.0
 URL: https://download.gnome.org/sources/gsettings-desktop-schemas/48/gsettings-desktop-schemas-48.0.tar.xz
 SHA256: e68f155813bf18f865a8b2c8e9d473588b6ccadcafbb666ab788857c6c2d1bd3
 
+Source: gdm
+Version: 48.0
+URL: https://download.gnome.org/sources/gdm/48/gdm-48.0.tar.xz
+SHA256: 1bc06daff093ec7b5e37ecb4f92e5da3474a1b1ba076edb9151ee967d1c30adf
+
 Source: gnome-desktop
 Version: 44.5
 URL: https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz
@@ -472,6 +477,26 @@ Source: json-glib
 Version: 1.10.8
 URL: https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.8.tar.xz
 SHA256: 55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd
+
+Source: geoclue
+Version: 2.7.2
+URL: https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/2.7.2/geoclue-2.7.2.tar.gz
+SHA256: 9c2f3626e3131abc037955cb38a8c0f28a29b4d6cc9992a067fe04be46e37fbe
+
+Source: geocode-glib
+Version: 3.26.4
+URL: https://download.gnome.org/sources/geocode-glib/3.26/geocode-glib-3.26.4.tar.xz
+SHA256: 2d9a6826d158470449a173871221596da0f83ebdcff98b90c7049089056a37aa
+
+Source: libgweather
+Version: 4.4.4
+URL: https://download.gnome.org/sources/libgweather/4.4/libgweather-4.4.4.tar.xz
+SHA256: 7017677753cdf7d1fdc355e4bfcdb1eba8369793a8df24d241427a939cbf4283
+
+Source: json-c
+Version: 0.18
+URL: https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz
+SHA256: 876ab046479166b869afc6896d288183bbc0e5843f141200c677b3e8dfb11724
 
 Source: libsecret
 Version: 0.21.7

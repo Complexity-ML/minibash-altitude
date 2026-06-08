@@ -24,6 +24,7 @@ done
 rm -rf "$WORK"
 mkdir -p "$PAYLOAD"/{bin,sbin,etc,proc,sys,dev,run,tmp,root,home,var/log} \
   "$PAYLOAD/usr/lib/modules" "$PAYLOAD/usr/share/altitude/sources"
+ln -s ../run "$PAYLOAD/var/run"
 
 install -m755 "$BUSYBOX" "$PAYLOAD/bin/busybox"
 install -m755 "$BASH" "$PAYLOAD/bin/bash"

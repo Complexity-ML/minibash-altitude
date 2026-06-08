@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-geocode-glib
+Version: 3.26.4
+Architecture: amd64
+Description: Geocode GLib library for GNOME weather and location clients

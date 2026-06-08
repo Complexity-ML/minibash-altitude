@@ -14,6 +14,7 @@ SYSROOT="$TOOLCHAIN/sysroot"
 CC="$TOOLCHAIN/bin/$TARGET-gcc"
 AR="$TOOLCHAIN/bin/$TARGET-ar"
 STRIP="$TOOLCHAIN/bin/$TARGET-strip"
+READELF="$TOOLCHAIN/bin/$TARGET-readelf"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
 TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" libsoup)"
@@ -23,16 +24,31 @@ export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfi
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64"
 
-for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG" meson ninja; do
+for tool in "$CC" "$AR" "$STRIP" "$READELF" "$PKG_CONFIG" meson ninja; do
   command -v "$tool" >/dev/null || { echo "libsoup: missing build tool: $tool" >&2; exit 1; }
 done
-for dep in glib-2.0 gmodule-no-export-2.0 gobject-2.0 gio-2.0 gio-unix-2.0 libnghttp2 sqlite3 libxml-2.0; do
+for dep in glib-2.0 gmodule-no-export-2.0 gobject-2.0 gio-2.0 gio-unix-2.0 \
+  gobject-introspection-1.0 libnghttp2 sqlite3 libxml-2.0; do
   "$PKG_CONFIG" --exists "$dep" || { echo "libsoup: target dependency missing: $dep" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
-mkdir -p "$WORK/source" "$WORK/build" "$PAYLOAD/usr/share/altitude/sources" "$OUT"
+mkdir -p "$WORK/source" "$WORK/build" "$WORK/tools" \
+  "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+cat > "$WORK/tools/ldd" <<EOF
+#!/bin/sh
+"$READELF" -d "\$1" 2>/dev/null | awk '
+  /NEEDED/ {
+    lib = \$0
+    sub(/^.*\\[/, "", lib)
+    sub(/\\].*$/, "", lib)
+    print "\\t" lib " => " lib " (0x00000000)"
+  }
+'
+EOF
+chmod +x "$WORK/tools/ldd"
+export PATH="$WORK/tools:$PATH"
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -60,7 +76,7 @@ meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
   --buildtype=release --wrap-mode=nofallback \
   -Dgssapi=disabled -Dntlm=disabled -Dbrotli=disabled -Dtls_check=false \
-  -Dintrospection=disabled -Dvapi=disabled -Ddocs=disabled \
+  -Dintrospection=enabled -Dvapi=disabled -Ddocs=disabled \
   -Dtests=false -Dinstalled_tests=false -Dautobahn=disabled \
   -Dsysprof=disabled -Dpkcs11_tests=disabled
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"

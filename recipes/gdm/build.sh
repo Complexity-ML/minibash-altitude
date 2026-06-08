@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${ALTITUDE_RECIPE_OUT:-$ROOT/out/source-packages}"
-WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/accountsservice}"
-VERSION=26.13.3
+WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/gdm}"
+VERSION=48.0
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
 FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
@@ -17,29 +17,30 @@ STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 READELF="$TOOLCHAIN/bin/$TARGET-readelf"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
-TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" accountsservice)"
+TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gdm)"
 
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 
 for tool in "$CC" "$AR" "$STRIP" "$READELF" "$PKG_CONFIG"; do
-  [ -x "$tool" ] || { echo "accountsservice: missing build tool: $tool" >&2; exit 1; }
+  [ -x "$tool" ] || { echo "gdm: missing build tool: $tool" >&2; exit 1; }
 done
 for tool in meson ninja; do
   command -v "$tool" >/dev/null ||
-    { echo "accountsservice: missing host build tool: $tool" >&2; exit 1; }
+    { echo "gdm: missing host build tool: $tool" >&2; exit 1; }
 done
-for dep in dbus-1 gio-2.0 gio-unix-2.0 glib-2.0 json-c gobject-introspection-1.0 \
-  libelogind polkit-gobject-1; do
+for dep in gio-2.0 gio-unix-2.0 glib-2.0 gobject-2.0 \
+  gobject-introspection-1.0 libelogind; do
   "$PKG_CONFIG" --exists "$dep" ||
-    { echo "accountsservice: target dependency missing: $dep" >&2; exit 1; }
+    { echo "gdm: target dependency missing: $dep" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
 mkdir -p "$WORK/source" "$WORK/build" "$WORK/tools" \
   "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+
 cat > "$WORK/tools/ldd" <<EOF
 #!/bin/sh
 "$READELF" -d "\$1" 2>/dev/null | awk '
@@ -53,14 +54,16 @@ cat > "$WORK/tools/ldd" <<EOF
 EOF
 chmod +x "$WORK/tools/ldd"
 export PATH="$WORK/tools:$PATH"
-cat > "$WORK/source/generate-version.sh" <<EOF
-#!/bin/sh
-echo "$VERSION"
-EOF
-chmod +x "$WORK/source/generate-version.sh"
-perl -0pi -e "s/i18n\\.merge_file\\(\\n  input: policy \\+ '\\.in',\\n  output: policy,\\n  po_dir: po_dir,\\n  install: true,\\n  install_dir: policy_dir,\\n\\)/configure_file(\\n  input: policy + '.in',\\n  output: policy,\\n  copy: true,\\n  install: true,\\n  install_dir: policy_dir,\\n\\)/" \
-  "$WORK/source/data/meson.build"
-sed -i "s|^policy_dir = .*|policy_dir = join_paths(act_datadir, 'polkit-1', 'actions')|" \
+
+sed -i \
+  -e "s/^udev_dep = dependency('udev')/udev_dep = dependency('udev', required: false)/" \
+  -e "s/^gudev_dep = dependency('gudev-1.0'.*/gudev_dep = dependency('gudev-1.0', version: '>= 232', required: false)/" \
+  -e "s/^accountsservice_dep = dependency('accountsservice'.*/accountsservice_dep = dependency('accountsservice', version: '>= 0.6.35', required: false)/" \
+  "$WORK/source/meson.build"
+perl -0pi -e "s/libpam_dep = cc\\.find_library\\('pam'\\)\\npam_extensions_supported = cc\\.has_header_symbol\\(\\n  'security\\/pam_appl\\.h', 'PAM_BINARY_PROMPT',\\n  dependencies: libpam_dep\\)/libpam_dep = dependency('', required: false)\\npam_extensions_supported = false/" \
+  "$WORK/source/meson.build"
+sed -i "s/^have_pam_syslog = .*/have_pam_syslog = false/" "$WORK/source/meson.build"
+perl -0pi -e "s/# Subdirs\\nsubdir\\('data'\\).*?subdir\\('docs'\\)/# Subdirs\\nsubdir('common')\\nsubdir('libgdm')/s" \
   "$WORK/source/meson.build"
 
 cat > "$WORK/cross.ini" <<EOF
@@ -90,15 +93,14 @@ meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" \
   --prefix=/usr --libdir=lib --libexecdir=libexec \
   --buildtype=release --default-library=both --wrap-mode=nofallback \
-  -Delogind=true -Dsystemdsystemunitdir=no \
-  -Dadmin_group=wheel -Dminimum_uid=1000 -Dwtmpfile=/var/log/wtmp \
-  -Dlibxcrypt=false -Dintrospection=true -Dvapi=false \
-  -Ddocbook=false -Dgtk_doc=false -Dtests=false \
-  -Dcreate_homed=false
+  -Dlogind-provider=elogind -Dsystemd-journal=false \
+  -Dsystemdsystemunitdir=no -Dsystemduserunitdir=no \
+  -Dx11-support=false -Dxdmcp=disabled \
+  -Dselinux=disabled -Dplymouth=disabled -Dlibaudit=disabled \
+  -Ddefault-pam-config=none -Dgdm-xsession=false
 meson compile -C "$WORK/build"
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
-rm -rf "$PAYLOAD$SYSROOT"
 find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
   while IFS= read -r -d '' file; do
     "$STRIP" --strip-unneeded "$file" 2>/dev/null || true
@@ -106,14 +108,13 @@ find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 
 {
-  echo "Source: accountsservice"
+  echo "Source: gdm"
   echo "Version: $VERSION"
   echo "SHA256: $(sha256sum "$TARBALL" | awk '{print $1}')"
-  echo "Build: Meson elogind-backed daemon and library cross $TARGET"
-  echo "Service: /usr/libexec/accounts-daemon"
+  echo "Build: libgdm client library and Gdm-1.0 typelib cross $TARGET"
   echo "Compiler: $("$CC" --version | head -1)"
-} > "$PAYLOAD/usr/share/altitude/sources/accountsservice.build"
+} > "$PAYLOAD/usr/share/altitude/sources/gdm.build"
 
 bash "$ROOT/rootfs/bin/altpkg-build" \
-  "$ROOT/recipes/accountsservice/MANIFEST" "$PAYLOAD" \
-  "$OUT/altitude-accountsservice-$VERSION-amd64.altpkg"
+  "$ROOT/recipes/gdm/MANIFEST" "$PAYLOAD" \
+  "$OUT/altitude-gdm-$VERSION-amd64.altpkg"

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-json-c
+Version: 0.18
+Architecture: amd64
+Description: JSON-C library for Altitude desktop services
