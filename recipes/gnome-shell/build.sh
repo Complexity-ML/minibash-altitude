@@ -57,6 +57,12 @@ EOF
 ln -sf gtk-update-icon-cache "$HOST_TOOLS/gtk4-update-icon-cache"
 chmod 755 "$HOST_TOOLS/gtk-update-icon-cache"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+perl -0pi -e "s/export async function registerSessionWithGDM\\(\\) \\{\\n    log\\('Registering session with GDM'\\);/export async function registerSessionWithGDM() {\\n    let hasGdm = false;\\n    try {\\n        let result = Gio.DBus.system.call_sync(\\n            'org.freedesktop.DBus',\\n            '\\/org\\/freedesktop\\/DBus',\\n            'org.freedesktop.DBus',\\n            'NameHasOwner',\\n            GLib.Variant.new('(s)', ['org.gnome.DisplayManager']),\\n            null, Gio.DBusCallFlags.NONE, -1, null);\\n        hasGdm = result.deepUnpack()[0];\\n    } catch {}\\n    if (!hasGdm) {\\n        log('Skipping GDM session registration: org.gnome.DisplayManager is not running');\\n        return;\\n    }\\n\\n    log('Registering session with GDM');/" \
+  "$WORK/source/js/misc/loginManager.js"
+sed -i "s/            log('Failed to register AuthenticationAgent');/            log('Skipping Polkit AuthenticationAgent registration: no eligible session');/" \
+  "$WORK/source/js/ui/components/polkitAgent.js"
+sed -i "s/            this.get_accessible().emit('notification', message, Atk.Live.ASSERTIVE);/            \\/\\/ Altitude: ClutterStageAccessible in Mutter 48 does not expose this signal./" \
+  "$WORK/source/js/gdm/authPrompt.js"
 
 if [ -z "$EXE_WRAPPER" ]; then
   EXE_WRAPPER="$WORK/target-wrapper"

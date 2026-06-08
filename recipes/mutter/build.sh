@@ -54,6 +54,8 @@ sed -i '/#include "meta\/prefs.h"/a\
 #ifndef ATK_LIVE_POLITE\
 #define ATK_LIVE_POLITE "polite"\
 #endif' "$WORK/source/src/core/workspace.c"
+perl -0pi -e 's/  if \(!stage_accessible\)\n    return;/  if (!stage_accessible ||\n      g_signal_lookup ("notification", G_OBJECT_TYPE (stage_accessible)) == 0)\n    return;/' \
+  "$WORK/source/src/core/workspace.c"
 
 cat > "$BUILD_TOOLS/ldd" <<EOF
 #!/usr/bin/env sh

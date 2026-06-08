@@ -56,6 +56,7 @@ cat > "$WORK/tools/ldd" <<EOF
 EOF
 chmod +x "$WORK/tools/ldd"
 export PATH="$WORK/tools:$PATH"
+sed -i '/portal is not running:/d' "$WORK/source/bus/server.c"
 
 (
   cd "$WORK/source"
