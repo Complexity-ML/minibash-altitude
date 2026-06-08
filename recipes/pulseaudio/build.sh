@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${ALTITUDE_RECIPE_OUT:-$ROOT/out/source-packages}"
-WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/gcr}"
-VERSION=4.4.0.1
+WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/pulseaudio}"
+VERSION=17.0
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
 FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
@@ -16,39 +16,23 @@ AR="$TOOLCHAIN/bin/$TARGET-ar"
 STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
-HOST_TOOLS="$WORK/host-tools"
-EXE_WRAPPER="$WORK/target-wrapper"
-TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gcr)"
+TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" pulseaudio)"
 
-export PATH="$HOST_TOOLS:$FORGE/bin:$TOOLCHAIN/bin:$PATH"
+export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
-export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$FORGE/lib:$TOOLCHAIN/$TARGET/lib64:${LD_LIBRARY_PATH:-}"
 export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64"
 
-for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG" meson ninja g-ir-scanner g-ir-compiler; do
-  command -v "$tool" >/dev/null || { echo "gcr: missing build tool: $tool" >&2; exit 1; }
+for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG" meson ninja; do
+  command -v "$tool" >/dev/null || { echo "pulseaudio: missing build tool: $tool" >&2; exit 1; }
 done
-for dep in glib-2.0 gio-2.0 gio-unix-2.0 gmodule-no-export-2.0 gthread-2.0 gobject-2.0 p11-kit-1 libgcrypt; do
-  "$PKG_CONFIG" --exists "$dep" || { echo "gcr: target dependency missing: $dep" >&2; exit 1; }
+for dep in alsa glib-2.0 gobject-2.0 gio-2.0 dbus-1 libelogind; do
+  "$PKG_CONFIG" --exists "$dep" || { echo "pulseaudio: target dependency missing: $dep" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
-mkdir -p "$WORK/source" "$WORK/build" "$HOST_TOOLS" "$PAYLOAD/usr/share/altitude/sources" "$OUT"
+mkdir -p "$WORK/source" "$WORK/build" "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
-
-cat > "$HOST_TOOLS/ldd" <<EOF
-#!/usr/bin/env sh
-exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
-EOF
-chmod 755 "$HOST_TOOLS/ldd"
-
-cat > "$EXE_WRAPPER" <<EOF
-#!/usr/bin/env sh
-export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$FORGE/lib:$TOOLCHAIN/$TARGET/lib64:\${LD_LIBRARY_PATH:-}"
-exec "\$@"
-EOF
-chmod 755 "$EXE_WRAPPER"
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -56,7 +40,6 @@ c = '$CC'
 ar = '$AR'
 strip = '$STRIP'
 pkg-config = '$PKG_CONFIG'
-exe_wrapper = '$EXE_WRAPPER'
 
 [properties]
 sys_root = '$SYSROOT'
@@ -76,23 +59,29 @@ EOF
 meson setup "$WORK/build" "$WORK/source" \
   --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
   --buildtype=release --wrap-mode=nofallback \
-  -Dgpg_path=/usr/bin/gpg \
-  -Dcrypto=libgcrypt -Dgtk4=false -Dssh_agent=false -Dsystemd=disabled \
-  -Dgtk_doc=false -Dintrospection=true -Dvapi=false
+  -Dclient=true -Ddaemon=false -Dtests=false -Ddoxygen=false -Dman=false \
+  -Ddatabase=simple -Dalsa=enabled -Dglib=enabled -Ddbus=enabled \
+  -Delogind=enabled -Dsystemd=disabled -Dudev=disabled \
+  -Dasyncns=disabled -Davahi=disabled -Dbluez5=disabled \
+  -Dbluez5-gstreamer=disabled -Dconsolekit=disabled -Dfftw=disabled \
+  -Dgsettings=disabled -Dgstreamer=disabled -Dgtk=disabled \
+  -Djack=disabled -Dlirc=disabled -Dopenssl=disabled -Dorc=disabled \
+  -Doss-output=disabled -Dsoxr=disabled -Dspeex=disabled \
+  -Dtcpwrap=disabled -Dvalgrind=disabled -Dx11=disabled \
+  -Dbashcompletiondir=no -Dzshcompletiondir=no
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
-find "$PAYLOAD/usr/lib" -name '*.la' -delete 2>/dev/null || true
 find "$PAYLOAD/usr/lib" -type f -name '*.so*' -exec "$STRIP" --strip-unneeded {} + 2>/dev/null || true
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 
 {
-  echo "Source: gcr"
+  echo "Source: pulseaudio"
   echo "Version: $VERSION"
   echo "SHA256: $(sha256sum "$TARBALL" | awk '{print $1}')"
-  echo "Build: Meson shared cross $TARGET, libgcrypt backend"
+  echo "Build: Meson client libraries cross $TARGET"
   echo "Compiler: $("$CC" --version | head -1)"
-} > "$PAYLOAD/usr/share/altitude/sources/gcr.build"
+} > "$PAYLOAD/usr/share/altitude/sources/pulseaudio.build"
 
 bash "$ROOT/rootfs/bin/altpkg-build" \
-  "$ROOT/recipes/gcr/MANIFEST" "$PAYLOAD" \
-  "$OUT/altitude-gcr-$VERSION-amd64.altpkg"
+  "$ROOT/recipes/pulseaudio/MANIFEST" "$PAYLOAD" \
+  "$OUT/altitude-pulseaudio-$VERSION-amd64.altpkg"

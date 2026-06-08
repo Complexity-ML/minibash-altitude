@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libsndfile
+Version: 1.2.2
+Architecture: amd64
+Description: Audio sample file library for the Altitude desktop audio stack

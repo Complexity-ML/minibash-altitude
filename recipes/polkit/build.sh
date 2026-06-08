@@ -16,17 +16,20 @@ AR="$TOOLCHAIN/bin/$TARGET-ar"
 STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
+HOST_TOOLS="$WORK/host-tools"
+EXE_WRAPPER="$WORK/target-wrapper"
 TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" polkit)"
 
-export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
+export PATH="$HOST_TOOLS:$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$FORGE/lib:$TOOLCHAIN/$TARGET/lib64:${LD_LIBRARY_PATH:-}"
 export LDFLAGS="${LDFLAGS:-} -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib64"
 
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || { echo "polkit: missing build tool: $tool" >&2; exit 1; }
 done
-for tool in meson ninja; do
+for tool in meson ninja g-ir-scanner g-ir-compiler; do
   command -v "$tool" >/dev/null ||
     { echo "polkit: missing host build tool: $tool" >&2; exit 1; }
 done
@@ -36,9 +39,22 @@ for dep in dbus-1 duktape expat gio-2.0 gio-unix-2.0 glib-2.0 libelogind; do
 done
 
 rm -rf "$WORK"
-mkdir -p "$WORK/source" "$WORK/build" \
+mkdir -p "$WORK/source" "$WORK/build" "$HOST_TOOLS" \
   "$PAYLOAD/usr/share/altitude/sources" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
+
+cat > "$HOST_TOOLS/ldd" <<EOF
+#!/usr/bin/env sh
+exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
+EOF
+chmod 755 "$HOST_TOOLS/ldd"
+
+cat > "$EXE_WRAPPER" <<EOF
+#!/usr/bin/env sh
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$FORGE/lib:$TOOLCHAIN/$TARGET/lib64:\${LD_LIBRARY_PATH:-}"
+exec "\$@"
+EOF
+chmod 755 "$EXE_WRAPPER"
 
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
@@ -46,6 +62,7 @@ c = '$CC'
 ar = '$AR'
 strip = '$STRIP'
 pkg-config = '$PKG_CONFIG'
+exe_wrapper = '$EXE_WRAPPER'
 
 [properties]
 sys_root = '$SYSROOT'
@@ -70,7 +87,7 @@ meson setup "$WORK/build" "$WORK/source" \
   -Dsession_tracking=elogind -Dauthfw=shadow -Dos_type=lfs \
   -Dpolkitd_user=root -Dprivileged_group=wheel \
   -Dsystemdsystemunitdir=/usr/lib/systemd/system \
-  -Dintrospection=false -Dexamples=false -Dtests=false \
+  -Dintrospection=true -Dexamples=false -Dtests=false \
   -Dgtk_doc=false -Dman=false -Dgettext=false
 meson compile -C "$WORK/build"
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"

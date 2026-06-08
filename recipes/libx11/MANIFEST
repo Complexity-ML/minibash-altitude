@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libx11
+Version: 1.8.12
+Architecture: amd64
+Description: X11 client library for GNOME Shell compatibility in Altitude

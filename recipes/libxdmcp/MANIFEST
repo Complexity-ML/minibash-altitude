@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libxdmcp
+Version: 1.1.5
+Architecture: amd64
+Description: X Display Manager Control Protocol library for Altitude

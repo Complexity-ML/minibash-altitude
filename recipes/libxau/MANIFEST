@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libxau
+Version: 1.0.12
+Architecture: amd64
+Description: X11 authorization library for the Altitude desktop stack

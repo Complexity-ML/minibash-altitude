@@ -23,7 +23,8 @@ TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gnome-shell)"
 export PATH="$HOST_TOOLS:$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
-export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$WORK/build/src:$WORK/build/src/st:$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/usr/lib/pulseaudio:$SYSROOT/usr/lib/evolution-data-server:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:${LD_LIBRARY_PATH:-}"
+export LDFLAGS="-L$WORK/build/src -L$WORK/build/src/st -L$SYSROOT/usr/lib -L$SYSROOT/usr/lib/pulseaudio -L$SYSROOT/usr/lib/evolution-data-server -Wl,-rpath-link,$WORK/build/src -Wl,-rpath-link,$WORK/build/src/st -Wl,-rpath-link,$SYSROOT/usr/lib -Wl,-rpath-link,$SYSROOT/usr/lib64 -Wl,-rpath-link,$SYSROOT/usr/lib/pulseaudio -Wl,-rpath-link,$SYSROOT/usr/lib/evolution-data-server ${LDFLAGS:-}"
 
 for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || { echo "gnome-shell: missing build tool: $tool" >&2; exit 1; }
@@ -36,7 +37,7 @@ for dep in atk-bridge-2.0 libecal-2.0 libedataserver-1.2 gcr-4 \
   gdk-pixbuf-2.0 gobject-introspection-1.0 gio-2.0 gio-unix-2.0 gjs-1.0 \
   gtk4 libxml-2.0 mutter-clutter-16 mutter-mtk-16 mutter-cogl-16 \
   libmutter-16 polkit-agent-1 gsettings-desktop-schemas gnome-desktop-4 \
-  pango libpulse libpulse-mainloop-glib alsa; do
+  pango libpulse libpulse-mainloop-glib alsa x11 xext xfixes; do
   "$PKG_CONFIG" --exists "$dep" ||
     { echo "gnome-shell: target dependency missing from $SYSROOT: $dep" >&2; exit 1; }
 done
@@ -49,13 +50,19 @@ cat > "$HOST_TOOLS/ldd" <<EOF
 exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
 EOF
 chmod 755 "$HOST_TOOLS/ldd"
+cat > "$HOST_TOOLS/gtk-update-icon-cache" <<'EOF'
+#!/usr/bin/env sh
+exit 0
+EOF
+ln -sf gtk-update-icon-cache "$HOST_TOOLS/gtk4-update-icon-cache"
+chmod 755 "$HOST_TOOLS/gtk-update-icon-cache"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 
 if [ -z "$EXE_WRAPPER" ]; then
   EXE_WRAPPER="$WORK/target-wrapper"
   cat > "$EXE_WRAPPER" <<EOF
 #!/usr/bin/env sh
-export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:\${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$WORK/build/src:$WORK/build/src/st:$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/usr/lib/pulseaudio:$SYSROOT/usr/lib/evolution-data-server:$SYSROOT/lib:$SYSROOT/lib64:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:\${LD_LIBRARY_PATH:-}"
 exec "\$@"
 EOF
   chmod 755 "$EXE_WRAPPER"
@@ -79,6 +86,9 @@ system = 'linux'
 cpu_family = 'x86_64'
 cpu = 'x86_64'
 endian = 'little'
+
+[built-in options]
+c_link_args = ['-L$WORK/build/src', '-L$WORK/build/src/st', '-L$SYSROOT/usr/lib', '-L$SYSROOT/usr/lib/pulseaudio', '-L$SYSROOT/usr/lib/evolution-data-server', '-Wl,-rpath-link,$WORK/build/src', '-Wl,-rpath-link,$WORK/build/src/st', '-Wl,-rpath-link,$SYSROOT/usr/lib', '-Wl,-rpath-link,$SYSROOT/usr/lib64', '-Wl,-rpath-link,$SYSROOT/usr/lib/pulseaudio', '-Wl,-rpath-link,$SYSROOT/usr/lib/evolution-data-server', '-lpulsecommon-17.0', '-ldbus-1', '-lsndfile', '-lz', '-lpcre2-8', '-lffi', '-lm']
 EOF
 
 meson setup "$WORK/build" "$WORK/source" \

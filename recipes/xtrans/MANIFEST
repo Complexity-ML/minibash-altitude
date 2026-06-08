@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-xtrans
+Version: 1.5.2
+Architecture: amd64
+Description: X transport helper headers for the Altitude desktop stack

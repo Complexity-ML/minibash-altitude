@@ -17,11 +17,14 @@ AR="$TOOLCHAIN/bin/$TARGET-ar"
 STRIP="$TOOLCHAIN/bin/$TARGET-strip"
 PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
+HOST_TOOLS="$WORK/host-tools"
+EXE_WRAPPER="$WORK/target-wrapper"
 TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gtk4)"
 
-export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
+export PATH="$HOST_TOOLS:$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
 export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:${LD_LIBRARY_PATH:-}"
 
 for tool in "$CC" "$CXX" "$AR" "$STRIP" "$PKG_CONFIG"; do
   [ -x "$tool" ] || {
@@ -29,14 +32,14 @@ for tool in "$CC" "$CXX" "$AR" "$STRIP" "$PKG_CONFIG"; do
     exit 1
   }
 done
-for tool in meson ninja awk sed; do
+for tool in meson ninja awk sed g-ir-scanner g-ir-compiler; do
   command -v "$tool" >/dev/null ||
     { echo "gtk4: missing host build tool: $tool" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
 mkdir -p "$WORK/source" "$WORK/build" \
-  "$PAYLOAD/usr/share/altitude/sources" "$OUT"
+  "$PAYLOAD/usr/share/altitude/sources" "$HOST_TOOLS" "$OUT"
 tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 
 # Altitude currently ships the last Rust-free librsvg branch. GTK already has
@@ -54,6 +57,19 @@ awk '
 ' "$WORK/source/gtk/gdktextureutils.c" > "$WORK/gdktextureutils.c"
 mv "$WORK/gdktextureutils.c" "$WORK/source/gtk/gdktextureutils.c"
 
+cat > "$HOST_TOOLS/ldd" <<EOF
+#!/usr/bin/env sh
+exec "$SYSROOT/usr/lib/ld-linux-x86-64.so.2" --list "\$@"
+EOF
+chmod 755 "$HOST_TOOLS/ldd"
+
+cat > "$EXE_WRAPPER" <<EOF
+#!/usr/bin/env sh
+export LD_LIBRARY_PATH="$SYSROOT/usr/lib:$SYSROOT/usr/lib64:$SYSROOT/lib:$SYSROOT/lib64:$TOOLCHAIN/$TARGET/lib64:$FORGE/lib:\${LD_LIBRARY_PATH:-}"
+exec "\$@"
+EOF
+chmod 755 "$EXE_WRAPPER"
+
 cat > "$WORK/cross.ini" <<EOF
 [binaries]
 c = '$CC'
@@ -61,6 +77,7 @@ cpp = '$CXX'
 ar = '$AR'
 strip = '$STRIP'
 pkg-config = '$PKG_CONFIG'
+exe_wrapper = '$EXE_WRAPPER'
 
 [properties]
 sys_root = '$SYSROOT'
@@ -85,7 +102,7 @@ meson setup "$WORK/build" "$WORK/source" \
   --buildtype=release --default-library=shared --wrap-mode=nofallback \
   -Dbuild-tests=false -Dbuild-testsuite=false \
   -Dbuild-examples=false -Dbuild-demos=false \
-  -Ddocumentation=false -Dintrospection=disabled \
+  -Ddocumentation=false -Dintrospection=enabled \
   -Dx11-backend=false -Dwayland-backend=true \
   -Dbroadway-backend=false -Dvulkan=disabled \
   -Dmedia-gstreamer=disabled -Dprint-cups=disabled

@@ -48,6 +48,11 @@ build_layer ipc dbus
 build_layer mesa-forge forge-mesa-python
 build_layer graphics-primitives wayland libdrm
 build_layer graphics-protocols wayland-protocols
+build_layer x-protocols xorgproto xcb-proto
+build_layer x-auth libxau libxdmcp
+build_layer x-transport xtrans
+build_layer xcb libxcb
+build_layer x11 libx11 libxext libxfixes
 build_layer graphics mesa
 build_layer image-primitives libpng
 build_layer ui-primitives freetype pixman
@@ -91,6 +96,7 @@ build_layer pkcs11 p11-kit
 build_layer certificate-ui gcr
 build_layer policy-primitives duktape libxcrypt
 build_layer policy polkit
+build_layer audio alsa libsndfile pulseaudio
 build_layer shell gnome-shell
 build_layer session gnome-session
 build_layer desktop-services accountsservice upower udisks

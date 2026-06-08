@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libxfixes
+Version: 6.0.1
+Architecture: amd64
+Description: Xfixes client library for GNOME Shell compatibility in Altitude

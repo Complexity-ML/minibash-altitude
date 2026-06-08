@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-xorgproto
+Version: 2024.1
+Architecture: amd64
+Description: X.Org protocol headers for the Altitude desktop stack
