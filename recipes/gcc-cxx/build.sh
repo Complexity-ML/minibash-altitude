@@ -117,6 +117,11 @@ fi
 
 ln -sf "$TARGET_TRIPLET-g++" "$WORK/payload$PREFIX/bin/g++"
 ln -sf "$TARGET_TRIPLET-g++" "$WORK/payload$PREFIX/bin/c++"
+install -d "$WORK/payload/usr/lib"
+ln -sf "$PREFIX/$TARGET_TRIPLET/lib64/libstdc++.so" "$WORK/payload/usr/lib/libstdc++.so"
+ln -sf "$PREFIX/$TARGET_TRIPLET/lib64/libstdc++.so.6.0.33" "$WORK/payload/usr/lib/libstdc++.so.6"
+ln -sf "$PREFIX/$TARGET_TRIPLET/lib64/libgcc_s.so" "$WORK/payload/usr/lib/libgcc_s.so"
+ln -sf "$PREFIX/$TARGET_TRIPLET/lib64/libgcc_s.so.1" "$WORK/payload/usr/lib/libgcc_s.so.1"
 
 if [ -d "$PREFIX/bin" ]; then
   cp -a "$WORK/payload$PREFIX/." "$PREFIX/"

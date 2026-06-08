@@ -51,6 +51,11 @@ install -d "$SYSROOT/usr/include" "$SYSROOT/usr/lib" "$SYSROOT/usr/lib64"
 cp -a "$WORK/payload/usr/include/." "$SYSROOT/usr/include/"
 cp -a "$WORK/payload/usr/lib/." "$SYSROOT/usr/lib/"
 if [ -d "$WORK/payload/usr/lib64" ]; then
+  for name in libffi.so libffi.so.8; do
+    if [ ! -e "$WORK/payload/usr/lib/$name" ] && [ -e "$WORK/payload/usr/lib64/$name" ]; then
+      ln -sf "../lib64/$name" "$WORK/payload/usr/lib/$name"
+    fi
+  done
   cp -a "$WORK/payload/usr/lib64/." "$SYSROOT/usr/lib64/"
 fi
 

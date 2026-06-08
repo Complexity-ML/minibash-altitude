@@ -16,6 +16,13 @@ DHCP_SCRIPT=/usr/share/udhcpc/default.script
 
 log() { echo "wifi: $*"; }
 
+ensure_ssh() {
+  [ -x /services/sshd.sh ] || return 0
+  pgrep -x dropbear >/dev/null 2>&1 && return 0
+  log "starting sshd fallback after wifi"
+  setsid /services/sshd.sh >/dev/null 2>&1 &
+}
+
 # 1. driver + opmode. Don't rely on the kernel auto-loading the opmode via
 #    request_module (timing-sensitive): load both explicitly so the one matching
 #    the card binds and creates wlanN deterministically.
@@ -103,5 +110,6 @@ busybox udhcpc -i "$IF" -s "$DHCP_SCRIPT" -t 10 -A 5 -b >/var/log/udhcpc.log 2>&
 while true; do
   addr="$(busybox ip -4 addr show "$IF" 2>/dev/null | awk '/inet /{print $2; exit}')"
   log "$IF=${addr:-none}"
+  [ -n "$addr" ] && ensure_ssh
   sleep 30
 done

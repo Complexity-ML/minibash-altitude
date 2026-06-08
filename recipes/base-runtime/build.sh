@@ -82,6 +82,28 @@ echo /sbin/modprobe > /proc/sys/kernel/modprobe 2>/dev/null || true
 if [ ! -f /var/bdb/tables/services/data.bdb ]; then
   cp -a /etc/minibash/bdb/. /var/bdb/
 fi
+
+# Service layer for the native slot. BusyBox init has no minit, so start every
+# service whose desired state is 'up' in the database, backgrounded. This is the
+# bdb-driven control plane: edit `desired` and the slot follows. Each service
+# gets a log so a failed network boot remains diagnosable from Debian repair.
+if [ -x /bin/bdb ] && [ -f /var/bdb/tables/services/data.bdb ]; then
+  /bin/bdb dump services 2>/dev/null | tail -n +2 | while IFS= read -r row; do
+    name=$(printf '%s' "$row" | cut -f1)
+    cmd=$(printf '%s' "$row" | cut -f2)
+    desired=$(printf '%s' "$row" | cut -f5)
+    [ "$desired" = up ] && [ -n "$cmd" ] && [ -x "$cmd" ] || continue
+    echo "[altitude] start $name"
+    setsid "$cmd" >>"/var/log/service-$name.log" 2>&1 &
+  done
+fi
+
+# Keep remote repair possible even if the BDB service table is stale or a
+# previous service launch raced the network stack.
+if [ -x /services/sshd.sh ]; then
+  setsid /services/sshd.sh >>/var/log/service-sshd-fallback.log 2>&1 &
+fi
+
 echo "[altitude] native runtime ready"
 EOF
 chmod 755 "$PAYLOAD/etc/rc.altitude"
