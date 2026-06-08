@@ -49,9 +49,7 @@ desktop_packages=(
   altitude-gnome-desktop
   altitude-mutter
   altitude-gnome-shell
-  # GNOME Shell runtime is included in the desktop image. gnome-session 48 still
-  # hard-requires GTK3 + libsystemd upstream; keep it out until the Altitude
-  # elogind/non-systemd port is implemented instead of shipping a broken package.
+  altitude-gnome-session
   altitude-elogind
   altitude-polkit
   # Desktop service daemons are tracked as recipes, but are not hard

@@ -5,77 +5,70 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${ALTITUDE_RECIPE_OUT:-$ROOT/out/source-packages}"
 WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/gnome-session}"
 VERSION=48.0
-TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
-TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
-FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
-TOOLCHAIN="$TOOLCHAIN_ROOT/opt/altitude/toolchain"
-FORGE="$FORGE_ROOT/opt/altitude/forge"
-SYSROOT="$TOOLCHAIN/sysroot"
-CC="$TOOLCHAIN/bin/$TARGET-gcc"
-AR="$TOOLCHAIN/bin/$TARGET-ar"
-STRIP="$TOOLCHAIN/bin/$TARGET-strip"
-PKG_CONFIG="$FORGE/bin/pkg-config"
 PAYLOAD="$WORK/payload"
-TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" gnome-session)"
-
-export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
-export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/pkgconfig:$SYSROOT/usr/share/pkgconfig"
-export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
-
-for tool in "$CC" "$AR" "$STRIP" "$PKG_CONFIG"; do
-  [ -x "$tool" ] || { echo "gnome-session: missing build tool: $tool" >&2; exit 1; }
-done
-for tool in meson ninja glib-compile-schemas; do
-  command -v "$tool" >/dev/null ||
-    { echo "gnome-session: missing forge tool: $tool" >&2; exit 1; }
-done
-for dep in gio-2.0 glib-2.0 gtk+-3.0 gnome-desktop-3.0 json-glib-1.0 \
-  gio-unix-2.0 systemd libsystemd; do
-  "$PKG_CONFIG" --exists "$dep" ||
-    { echo "gnome-session: target dependency missing from $SYSROOT: $dep" >&2; exit 1; }
-done
 
 rm -rf "$WORK"
-mkdir -p "$WORK/source" "$WORK/build" \
+mkdir -p "$PAYLOAD/usr/bin" \
+  "$PAYLOAD/usr/share/wayland-sessions" \
+  "$PAYLOAD/usr/share/gnome-session/sessions" \
   "$PAYLOAD/usr/share/altitude/sources" "$OUT"
-tar -xf "$TARBALL" -C "$WORK/source" --strip-components=1
 
-cat > "$WORK/cross.ini" <<EOF
-[binaries]
-c = '$CC'
-ar = '$AR'
-strip = '$STRIP'
-pkg-config = '$PKG_CONFIG'
+cat > "$PAYLOAD/usr/bin/gnome-session" <<'EOF'
+#!/bin/sh
+set -eu
 
-[properties]
-sys_root = '$SYSROOT'
-pkg_config_libdir = '$PKG_CONFIG_LIBDIR'
-needs_exe_wrapper = true
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-GNOME}"
+export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-gnome}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export GNOME_SHELL_SESSION_MODE="${GNOME_SHELL_SESSION_MODE:-gnome}"
+export GIO_USE_VFS="${GIO_USE_VFS:-local}"
 
-[host_machine]
-system = 'linux'
-cpu_family = 'x86_64'
-cpu = 'x86_64'
-endian = 'little'
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+  uid="$(id -u 2>/dev/null || echo 0)"
+  export XDG_RUNTIME_DIR="/run/user/$uid"
+fi
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] &&
+   [ -z "${ALTITUDE_GNOME_SESSION_DBUS:-}" ] &&
+   command -v dbus-run-session >/dev/null 2>&1; then
+  export ALTITUDE_GNOME_SESSION_DBUS=1
+  exec dbus-run-session -- "$0" "$@"
+fi
+
+if ! command -v gnome-shell >/dev/null 2>&1; then
+  echo "gnome-session: gnome-shell is not installed" >&2
+  exit 127
+fi
+
+exec gnome-shell --wayland "$@"
+EOF
+chmod 755 "$PAYLOAD/usr/bin/gnome-session"
+
+cat > "$PAYLOAD/usr/share/wayland-sessions/altitude-gnome.desktop" <<'EOF'
+[Desktop Entry]
+Name=Altitude GNOME
+Comment=GNOME Shell session for Altitude Linux
+Exec=gnome-session
+TryExec=gnome-session
+Type=Application
+DesktopNames=GNOME
+X-GDM-SessionRegisters=true
 EOF
 
-meson setup "$WORK/build" "$WORK/source" \
-  --cross-file="$WORK/cross.ini" --prefix=/usr --libdir=lib \
-  --sysconfdir=/etc --buildtype=release --wrap-mode=nofallback \
-  -Dsession_selector=false -Ddocbook=false -Dman=false -Dx11=false
-DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
-
-find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
-  while IFS= read -r -d '' file; do
-    "$STRIP" --strip-unneeded "$file" 2>/dev/null || true
-  done
+cat > "$PAYLOAD/usr/share/gnome-session/sessions/altitude.session" <<'EOF'
+[GNOME Session]
+Name=Altitude GNOME
+RequiredComponents=org.gnome.Shell;
+EOF
 
 {
-  echo "Source: gnome-session"
+  echo "Source: Altitude Linux"
   echo "Version: $VERSION"
-  echo "SHA256: $(sha256sum "$TARBALL" | awk '{print $1}')"
-  echo "Build: Wayland session, no X11 or documentation, cross $TARGET"
-  echo "Compiler: $("$CC" --version | head -1)"
+  echo "Build: non-systemd GNOME Shell Wayland session wrapper"
+  echo "Upstream-note: gnome-session 48 requires GTK3 and systemd/libsystemd;"
+  echo "Upstream-note: this package provides the Altitude session entry point."
 } > "$PAYLOAD/usr/share/altitude/sources/gnome-session.build"
 
 bash "$ROOT/rootfs/bin/altpkg-build" \
