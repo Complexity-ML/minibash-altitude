@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# Bring up the GNOME desktop on the Debian disk-root WITHOUT systemd:
-#   system D-Bus -> elogind (provides logind for mutter) -> lightdm display
-#   manager (PAM opens a logind session via pam_elogind) -> GNOME session.
+# Start the Altitude GNOME desktop without systemd or a display manager.
 set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 exec >>/var/log/graphical.log 2>&1
 
+VT="${ALTITUDE_GRAPHICAL_VT:-2}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
+
 log() { echo "graphical: $* ($(date 2>/dev/null))"; }
-cleanup() {
-  log "stopping lightdm session"
-  killall gnome-session-failed gnome-session-binary gnome-shell lightdm Xorg 2>/dev/null || true
-}
-trap cleanup TERM INT
 
 wait_bus_name() {
   local name="$1" i
-  for i in 1 2 3 4 5; do
+  for i in 1 2 3 4 5 6 7 8 9 10; do
     busctl --system --no-pager list 2>/dev/null | awk '{print $1}' | grep -qx "$name" && return 0
     sleep 1
   done
@@ -27,118 +23,122 @@ start_if_missing() {
   if pgrep -x "$proc" >/dev/null 2>&1 && wait_bus_name "$name"; then
     return 0
   fi
+  if [ ! -x "$1" ]; then
+    log "skipping missing service $proc ($1)"
+    return 0
+  fi
   "$@" >/var/log/"$proc"-graphical.log 2>&1 &
   wait_bus_name "$name" || true
 }
 
-# GPU and input drivers (udev does not cold-plug them here)
-for m in evdev mousedev usbhid hid_generic i2c_hid i2c_hid_acpi psmouse i915 amdgpu radeon nouveau virtio_gpu simpledrm; do
+cleanup() {
+  log "stopping GNOME session"
+  killall gnome-shell 2>/dev/null || true
+}
+trap cleanup TERM INT
+
+udevd_running() {
+  pgrep -x systemd-udevd >/dev/null 2>&1 || pgrep -x udevd >/dev/null 2>&1 || \
+    ps -ef | grep -Eq '[/](usr/)?sbin/udevd'
+}
+
+# GPU, input and seat plumbing. HP Omen uses NVIDIA TU116 as the visible panel
+# device, so nouveau must be present before udev cold-plugs DRM.
+for m in evdev mousedev usbhid hid_generic i2c_hid i2c_hid_acpi psmouse \
+         mxm-wmi drm_ttm_helper gpu-sched nouveau i915 amdgpu radeon \
+         virtio_gpu simpledrm; do
   modprobe "$m" 2>/dev/null || true
 done
 
-# Xorg/libinput normally discovers devices through udev. In minibash we do not
-# run systemd, so start udevd directly when it exists and cold-plug once before
-# LightDM starts. This is what creates /dev/input/event* early enough for X.
-if command -v udevadm >/dev/null 2>&1; then
-  mkdir -p /run/udev /run/udev/data
-  if ! pgrep -x systemd-udevd >/dev/null 2>&1 && ! pgrep -x udevd >/dev/null 2>&1; then
-    /lib/systemd/systemd-udevd --daemon 2>/var/log/udevd.log || true
-  fi
-  udevadm trigger --subsystem-match=input --action=add >/dev/null 2>&1 || true
-  udevadm trigger --subsystem-match=drm --action=add >/dev/null 2>&1 || true
-  udevadm settle --timeout=5 >/dev/null 2>&1 || true
+mkdir -p /run/udev /run/udev/data "$RUNTIME_DIR" /run/dbus /run/elogind \
+  /run/systemd/seats /run/systemd/sessions /run/systemd/users
+chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+
+if ! udevd_running; then
+  log "starting udevd"
+  /usr/sbin/udevd --daemon 2>/var/log/udevd.log || /sbin/udevd --daemon 2>/var/log/udevd.log || true
 fi
 
-# machine-id (logind/dbus need it)
+if command -v udevadm >/dev/null 2>&1; then
+  udevadm trigger --action=add >/dev/null 2>&1 || true
+  udevadm settle --timeout=10 >/dev/null 2>&1 || true
+fi
+
 if [ ! -s /etc/machine-id ]; then
   dbus-uuidgen --ensure=/etc/machine-id 2>/dev/null || tr -d '-' < /proc/sys/kernel/random/uuid > /etc/machine-id
 fi
-mkdir -p /run/dbus /run/elogind /run/lightdm /var/lib/lightdm /var/lib/lightdm-data /run/user
 [ -s /var/lib/dbus/machine-id ] || { mkdir -p /var/lib/dbus; cp /etc/machine-id /var/lib/dbus/machine-id; }
 
-# LightDM autologin runs as the desktop user. Keep its home/runtime dirs sane:
-# bad ownership here makes GNOME exit immediately with status 13.
-if id minibash >/dev/null 2>&1; then
-  mkdir -p /home/minibash/.config /home/minibash/.local/share /run/user/1000 /tmp/.ICE-unix /tmp/.X11-unix
-  mkdir -p /home/minibash/.config/autostart
-  chown -R minibash:minibash /home/minibash
-  chown minibash:minibash /run/user/1000
-  chmod 755 /home/minibash
-  chmod 700 /run/user/1000
-  chmod 1777 /tmp/.ICE-unix /tmp/.X11-unix
-  cat > /home/minibash/.xsessionrc <<'EOF'
-export XDG_RUNTIME_DIR=/run/user/1000
-export XDG_SESSION_TYPE=x11
-export GDK_BACKEND=x11
-export LIBGL_ALWAYS_SOFTWARE=1
-export TZ="${TZ:-UTC}"
-EOF
-  cat > /home/minibash/.xsession <<'EOF'
-#!/bin/sh
-export XDG_RUNTIME_DIR=/run/user/1000
-export XDG_SESSION_TYPE=x11
-export GDK_BACKEND=x11
-export LIBGL_ALWAYS_SOFTWARE=1
-export TZ="${TZ:-UTC}"
-xset dpms force on 2>/dev/null || true
-xset s off -dpms 2>/dev/null || true
-xrandr --output eDP-1 --primary --auto --preferred --pos 0x0 --rotate normal 2>/dev/null || true
-exec dbus-run-session -- sh -c '
-  gsettings set org.gnome.desktop.session idle-delay 0 >/dev/null 2>&1 || true
-  gsettings set org.gnome.desktop.screensaver lock-enabled false >/dev/null 2>&1 || true
-  gsettings set org.gnome.desktop.interface color-scheme prefer-dark >/dev/null 2>&1 || true
-  gsettings set org.gnome.desktop.background picture-options none >/dev/null 2>&1 || true
-  gsettings set org.gnome.desktop.background primary-color "#101418" >/dev/null 2>&1 || true
-  gsettings set org.gnome.shell favorite-apps "['\''org.gnome.Nautilus.desktop'\'', '\''minibash-services.desktop'\'']" >/dev/null 2>&1 || true
-  exec gnome-session
-'
-EOF
-  cp /etc/xdg/autostart/minibash-services.desktop /home/minibash/.config/autostart/minibash-services.desktop 2>/dev/null || true
-  rm -f /home/minibash/.config/monitors.xml
-  chown -R minibash:minibash /home/minibash/.config/autostart
-  chown minibash:minibash /home/minibash/.xsessionrc /home/minibash/.xsession
-  chmod +x /home/minibash/.xsession
-fi
-
-# 1. system D-Bus. Prefer the dbus BDB service when it is enabled, but keep a
-# fallback here so graphical can still be launched manually.
 [ -S /run/dbus/system_bus_socket ] || { log "starting dbus fallback"; dbus-daemon --system --fork --nopidfile; }
-sleep 1
 
-# 2. elogind (the logind implementation mutter talks to). Same idea: normally
-# owned by the elogind BDB service, fallback for manual graphical starts.
-log "checking desktop system services"
 if ! pgrep -x elogind >/dev/null 2>&1; then
-  # LightDM/GNOME can leave stale elogind runtime state behind after a hard
-  # display restart. In our non-systemd boot, that can make elogind abort before
-  # it owns org.freedesktop.login1, leaving LightDM on a black VT.
   rm -f /run/elogind.pid /run/systemd/seats/* /run/systemd/sessions/* /run/systemd/users/* 2>/dev/null || true
-  mkdir -p /run/elogind /run/systemd/seats /run/systemd/sessions /run/systemd/users
 fi
 start_if_missing org.freedesktop.login1 elogind /usr/libexec/elogind
 start_if_missing org.freedesktop.UPower upowerd /usr/libexec/upowerd --verbose
 start_if_missing org.freedesktop.Accounts accounts-daemon /usr/libexec/accounts-daemon
-start_if_missing org.freedesktop.UDisks2 udisksd /usr/libexec/udisks2/udisksd --no-debug
 start_if_missing org.freedesktop.PolicyKit1 polkitd /usr/lib/polkit-1/polkitd --no-debug
-mkdir -p /run/wpa_supplicant
-if [ -x /usr/libexec/iwd ]; then
-  start_if_missing net.connman.iwd iwd /usr/libexec/iwd
-else
-  start_if_missing fi.w1.wpa_supplicant1 wpa_supplicant /usr/sbin/wpa_supplicant -u -s -O /run/wpa_supplicant
-fi
-sleep 1
+start_if_missing org.freedesktop.RealtimeKit1 rtkit-daemon /usr/libexec/rtkit-daemon
 
-# 3. lightdm -> autologin -> GNOME
-if pgrep -x lightdm >/dev/null 2>&1; then
-  log "lightdm already running"
+cat > /run/altitude-gnome-session <<'EOF'
+#!/bin/sh
+set -u
+
+VT="${ALTITUDE_GRAPHICAL_VT:-2}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
+LOG=/var/log/gnome-shell.log
+
+export TZ="${TZ:-UTC}"
+export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=GNOME
+export XDG_SESSION_DESKTOP=altitude
+export GNOME_SHELL_SESSION_MODE=altitude
+export GIO_USE_VFS=local
+
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+rm -f "$XDG_RUNTIME_DIR"/gnome-shell-disable-extensions "$XDG_RUNTIME_DIR"/wayland-*
+
+resp="$(busctl --system call \
+  org.freedesktop.login1 \
+  /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager \
+  CreateSession 'uusssssussbssa(sv)' \
+  0 "$$" altitude wayland user altitude seat0 "$VT" "tty$VT" "" false "" "" 0)"
+
+echo "CreateSession: $resp" >"$LOG"
+sid="$(printf "%s\n" "$resp" | awk '{print $2}' | tr -d '"')"
+export XDG_SESSION_ID="$sid"
+echo "XDG_SESSION_ID=$XDG_SESSION_ID PID=$$" >>"$LOG"
+
+dbus_info="$(dbus-daemon --session --fork --print-address=1 --print-pid=1)"
+export DBUS_SESSION_BUS_ADDRESS="$(printf "%s\n" "$dbus_info" | sed -n '1p')"
+echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >>"$LOG"
+
+gnome-shell --wayland --display-server >>"$LOG" 2>&1
+status=$?
+busctl --system call org.freedesktop.login1 /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager ReleaseSession s "$XDG_SESSION_ID" >/dev/null 2>&1 || true
+exit "$status"
+EOF
+chmod +x /run/altitude-gnome-session
+
+if pgrep -x gnome-shell >/dev/null 2>&1; then
+  log "gnome-shell already running"
   exec sleep infinity
 fi
 
-log "starting lightdm"
-lightdm &
-sleep 3
-while pgrep -x lightdm >/dev/null 2>&1; do
-  sleep 60
+log "starting GNOME on tty$VT"
+if command -v openvt >/dev/null 2>&1; then
+  openvt -c "$VT" -f -s -- /run/altitude-gnome-session &
+else
+  /run/altitude-gnome-session &
+fi
+
+while pgrep -x gnome-shell >/dev/null 2>&1 || pgrep -f /run/altitude-gnome-session >/dev/null 2>&1; do
+  sleep 10
 done
-log "lightdm exited"
+
+log "GNOME exited"
 exit 1
