@@ -109,15 +109,19 @@ if [ ! -f /var/bdb/tables/registry/data.bdb ]; then
   cp -a /etc/minibash/bdb/. /var/bdb/
 fi
 
-# Bring SSH up early. Dropbear can listen before DHCP finishes, so remote
-# repair remains available as soon as the WiFi lease appears.
+# Bring WiFi up early, then SSH. Dropbear can listen before DHCP finishes, so
+# remote repair remains available as soon as the WiFi lease appears.
+if [ -x /services/wifi.sh ] && ! pgrep -f '/services/wifi.sh' >/dev/null 2>&1; then
+  setsid /services/wifi.sh >>/var/log/service-wifi-early.log 2>&1 &
+fi
+
 if [ -x /services/sshd.sh ] && ! pgrep -x dropbear >/dev/null 2>&1; then
   setsid /services/sshd.sh >>/var/log/service-sshd-early.log 2>&1 &
 fi
 
 # Native boot services are external scripts, not BDB rows. Systemd can replace
 # this list later; the BDB only audits systemd state through systemd_audit.
-for name in keymap kmod mountd sysctld clock syslog wifi netd netmgr healthd metrics cron updated pkgd web; do
+for name in keymap kmod mountd sysctld clock syslog netd netmgr healthd metrics cron updated pkgd web; do
   cmd="/services/$name.sh"
   [ -x "$cmd" ] || continue
   echo "[altitude] start $name"
@@ -126,6 +130,10 @@ done
 
 if [ -x /services/sshd.sh ] && ! pgrep -x dropbear >/dev/null 2>&1; then
   setsid /services/sshd.sh >>/var/log/service-sshd-fallback.log 2>&1 &
+fi
+
+if [ -x /services/wifi.sh ] && ! pgrep -f '/services/wifi.sh' >/dev/null 2>&1; then
+  setsid /services/wifi.sh >>/var/log/service-wifi-fallback.log 2>&1 &
 fi
 
 echo "[altitude] native runtime ready"
