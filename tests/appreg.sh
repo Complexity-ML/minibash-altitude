@@ -42,11 +42,24 @@ Exec=/bin/altitude-tool
 Categories=System;
 EOF
 
+cat > "$TMP/apps/org.altitude.Missing.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Missing Native Tool
+Exec=/bin/missing-native-tool
+TryExec=/bin/missing-native-tool
+Categories=System;
+EOF
+
 cat > "$TMP/packages/altitude-demo/paths" <<EOF
 payload$TMP/apps/org.altitude.Demo.desktop
 EOF
 
 "$ROOT/rootfs/bin/appreg" refresh | grep -q 'indexed 3 applications'
+if "$ROOT/rootfs/bin/appreg" list | grep -q 'Missing Native Tool'; then
+  echo "appreg listed an unavailable TryExec application" >&2
+  exit 1
+fi
 "$ROOT/rootfs/bin/appreg" status | grep -q 'visible[[:space:]]*2'
 "$ROOT/rootfs/bin/appreg" status | grep -q 'hidden[[:space:]]*1'
 "$ROOT/rootfs/bin/appreg" status | grep -q 'packaged[[:space:]]*2'

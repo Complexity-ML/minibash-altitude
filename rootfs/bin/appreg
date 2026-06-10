@@ -81,6 +81,15 @@ desktop_id() {
   printf '%s' "$(basename "$file" .desktop)" | tr -c 'A-Za-z0-9_.+-' '-'
 }
 
+tryexec_available() {
+  local command="$1"
+  [ -n "$command" ] || return 0
+  case "$command" in
+    /*) [ -x "$command" ] ;;
+    *) command -v "$command" >/dev/null 2>&1 ;;
+  esac
+}
+
 package_for_desktop() {
   local file="$1" id state paths
   for state in "$STATE_ROOT"/*; do
@@ -113,7 +122,7 @@ upsert_app() {
 }
 
 cmd_refresh() {
-  local dir file id type name exec no_display hidden categories package description visible count=0 list seen
+  local dir file id type name exec try_exec no_display hidden categories package description visible count=0 list seen
   ensure_table
   seen="$(mktemp)"
   IFS=: read -r -a dirs <<< "$APP_DIRS"
@@ -127,6 +136,8 @@ cmd_refresh() {
       name="$(desktop_value Name "$file")"
       exec="$(desktop_value Exec "$file")"
       [ -n "$name" ] && [ -n "$exec" ] || continue
+      try_exec="$(desktop_value TryExec "$file")"
+      tryexec_available "$try_exec" || continue
       hidden="$(desktop_value Hidden "$file")"
       [ "$hidden" = true ] && continue
       no_display="$(desktop_value NoDisplay "$file")"
