@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-vte
+Version: 0.80.4
+Architecture: amd64
+Description: GTK4 terminal widget library

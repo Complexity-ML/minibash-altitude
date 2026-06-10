@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libadwaita
+Version: 1.7.7
+Architecture: amd64
+Description: GNOME Adwaita GTK4 application widgets

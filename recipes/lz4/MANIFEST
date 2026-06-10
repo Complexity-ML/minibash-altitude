@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-lz4
+Version: 1.10.0
+Architecture: amd64
+Description: LZ4 compression library

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-fast-float
+Version: 8.0.0
+Architecture: all
+Description: Minimal fast_float header compatibility layer

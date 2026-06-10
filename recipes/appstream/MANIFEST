@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-appstream
+Version: 1.0.6
+Architecture: amd64
+Description: Minimal AppStream compatibility library for libadwaita

@@ -39,34 +39,109 @@ desktop_packages=(
   altitude-meson
   altitude-ninja
   altitude-cmake
+  altitude-ca-certificates
+  altitude-openssl
+  altitude-expat
+  altitude-zlib
+  altitude-libffi
+  altitude-pcre2
+  altitude-libxcrypt
   altitude-dbus
   altitude-glib
   altitude-cantarell-fonts
+  altitude-freetype
+  altitude-fontconfig
+  altitude-libpng
+  altitude-pixman
+  altitude-cairo
+  altitude-fribidi
+  altitude-harfbuzz
+  altitude-datrie
+  altitude-libthai
+  altitude-pango
+  altitude-libjpeg-turbo
+  altitude-libtiff
+  altitude-gdk-pixbuf
+  altitude-libxml2
+  altitude-json-glib
+  altitude-graphene
+  altitude-libepoxy
+  altitude-libxkbcommon
+  altitude-atk
+  altitude-at-spi2-core
   altitude-wayland
   altitude-wayland-protocols
+  altitude-xorgproto
+  altitude-xtrans
+  altitude-xcb-proto
+  altitude-libxau
+  altitude-libxdmcp
+  altitude-libxcb
+  altitude-libx11
+  altitude-libxext
+  altitude-libxfixes
   altitude-libdrm
   altitude-mesa
+  altitude-lz4
+  altitude-fast-float
+  altitude-icu
+  altitude-gcc-cxx
   altitude-gtk4
+  altitude-appstream
+  altitude-libadwaita
+  altitude-vte
+  altitude-libgtop
+  altitude-gnome-console
   altitude-hicolor-icon-theme
   altitude-adwaita-icon-theme
   altitude-gsettings-desktop-schemas
+  altitude-gobject-introspection
   altitude-gnome-desktop
   altitude-sqlite
+  altitude-json-c
+  altitude-libgcrypt
+  altitude-libgpg-error
+  altitude-libpsl
+  altitude-libnghttp2
+  altitude-libsoup
+  altitude-nspr
+  altitude-nss
+  altitude-p11-kit
+  altitude-gcr
+  altitude-libsecret
+  altitude-iso-codes
+  altitude-libical
+  altitude-evolution-data-server
   altitude-libusb
   altitude-libgusb
   altitude-lcms2
   altitude-eudev
   altitude-libgudev
-  altitude-json-c
+  altitude-libevdev
+  altitude-mtdev
+  altitude-libei
+  altitude-libinput
+  altitude-libdisplay-info
+  altitude-libseccomp
+  altitude-libcap
+  altitude-libnl
+  altitude-util-linux
+  altitude-alsa
+  altitude-libsndfile
+  altitude-pulseaudio
   altitude-accountsservice
   altitude-gdm
   altitude-colord
+  altitude-libcroco
+  altitude-librsvg
   altitude-gstreamer
   altitude-geoclue
   altitude-geocode-glib
   altitude-libgweather
   altitude-ibus
   altitude-upower
+  altitude-mozjs
+  altitude-gjs
   altitude-mutter
   altitude-gnome-shell
   altitude-gnome-session

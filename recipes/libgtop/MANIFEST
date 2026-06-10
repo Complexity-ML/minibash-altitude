@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-libgtop
+Version: 2.41.3
+Architecture: amd64
+Description: GNOME system monitoring library

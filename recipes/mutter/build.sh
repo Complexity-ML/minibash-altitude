@@ -112,6 +112,13 @@ meson setup "$WORK/build" "$WORK/source" \
   -Dbash_completion=false
 DESTDIR="$PAYLOAD" meson install -C "$WORK/build"
 
+if [ -d "$PAYLOAD/usr/lib/mutter-16" ]; then
+  for lib in "$PAYLOAD"/usr/lib/mutter-16/libmutter-*.so*; do
+    [ -e "$lib" ] || continue
+    ln -sf "mutter-16/$(basename "$lib")" "$PAYLOAD/usr/lib/$(basename "$lib")"
+  done
+fi
+
 find "$PAYLOAD/usr" -type f -perm -0100 -print0 |
   while IFS= read -r -d '' file; do
     "$STRIP" --strip-unneeded "$file" 2>/dev/null || true

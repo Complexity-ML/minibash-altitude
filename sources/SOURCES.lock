@@ -208,6 +208,11 @@ Version: 10.47
 URL: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.47/pcre2-10.47.tar.bz2
 SHA256: 47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7
 
+Source: lz4
+Version: 1.10.0
+URL: https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz
+SHA256: 537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b
+
 Source: glib
 Version: 2.84.4
 URL: https://download.gnome.org/sources/glib/2.84/glib-2.84.4.tar.xz
@@ -322,6 +327,16 @@ Source: gtk4
 Version: 4.20.3
 URL: https://download.gnome.org/sources/gtk/4.20/gtk-4.20.3.tar.xz
 SHA256: 2873f2903088a66c71173ea2ed85ffae266a66b972c3a4842bbb2f6f187ec153
+
+Source: libadwaita
+Version: 1.7.7
+URL: https://download.gnome.org/sources/libadwaita/1.7/libadwaita-1.7.7.tar.xz
+SHA256: 62d1f54c6ce6e9f48d72437e151e4404f6cfa21eb0b41dbc20563700940b295b
+
+Source: vte
+Version: 0.80.4
+URL: https://download.gnome.org/sources/vte/0.80/vte-0.80.4.tar.xz
+SHA256: 0fb445d9a4baa30d75d8640cc7224c11e015226fb472c4a9aff4e2250a2b9b0e
 
 Source: fribidi
 Version: 1.0.16
@@ -667,6 +682,16 @@ Source: gnome-session
 Version: 48.0
 URL: https://download.gnome.org/sources/gnome-session/48/gnome-session-48.0.tar.xz
 SHA256: dd909fbc5b22cdbdb2fc4df1a47d78d1b5943ccc5e61e6a20a1846246347c417
+
+Source: libgtop
+Version: 2.41.3
+URL: https://download.gnome.org/sources/libgtop/2.41/libgtop-2.41.3.tar.xz
+SHA256: 775676df958e2ea2452f7568f28b2ea581063d312773dd5c0b7624c1b9b2da8c
+
+Source: gnome-console
+Version: 48.0.1
+URL: https://download.gnome.org/sources/gnome-console/48/gnome-console-48.0.1.tar.xz
+SHA256: 018e908e4daebcfcb150d4f1bb28d98272aa9d14d6815eaf8da45f889db05c49
 
 Source: elogind
 Version: 257.16

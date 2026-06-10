@@ -10,11 +10,27 @@ export PATH=/bin:/usr/bin:/sbin:/usr/sbin
 exec >>/var/log/wifi.log 2>&1
 set -x
 
-IF="${WIFI_IF:-wlan0}"
+IF="${WIFI_IF:-}"
 CONF=/etc/wpa_supplicant.conf
 DHCP_SCRIPT=/usr/share/udhcpc/default.script
 
 log() { echo "wifi: $*"; }
+
+detect_wifi_if() {
+  local dev base
+  if [ -n "$IF" ] && [ -e "/sys/class/net/$IF" ]; then
+    printf '%s\n' "$IF"
+    return 0
+  fi
+  for dev in /sys/class/net/wlan* /sys/class/net/wlo* /sys/class/net/wlp* /sys/class/net/wl*; do
+    [ -e "$dev" ] || continue
+    base="${dev##*/}"
+    [ "$base" = lo ] && continue
+    printf '%s\n' "$base"
+    return 0
+  done
+  return 1
+}
 
 ensure_ssh() {
   [ -x /services/sshd.sh ] || return 0
@@ -63,16 +79,19 @@ modprobe rfkill 2>/dev/null || true
 command -v rfkill >/dev/null 2>&1 && rfkill unblock all 2>/dev/null || true
 for f in /sys/class/rfkill/*/soft; do [ -e "$f" ] && echo 0 > "$f" 2>/dev/null || true; done
 
-# 3. wait for the interface to appear
+# 3. wait for the interface to appear. udev/kernel may rename wlan0 to a
+# predictable name such as wlo1 after iwlmvm binds, so discover it dynamically.
 for ((i=0; i<30; i++)); do
-  [ -e "/sys/class/net/$IF" ] && break
+  IF="$(detect_wifi_if || true)"
+  [ -n "$IF" ] && break
   sleep 1
 done
-if [ ! -e "/sys/class/net/$IF" ]; then
-  log "no $IF interface (iwlwifi opmode/firmware?). dmesg:"
+if [ -z "$IF" ] || [ ! -e "/sys/class/net/$IF" ]; then
+  log "no wifi interface (iwlwifi opmode/firmware?). dmesg:"
   dmesg 2>/dev/null | grep -iE 'iwlwifi|iwlmvm|firmware' | tail -5
-  while true; do log "no $IF; run 'wifi' on the console"; sleep 60; done
+  while true; do log "no wifi interface; run 'wifi' on the console"; sleep 60; done
 fi
+log "using interface $IF"
 
 # Make sure no competing manager fights us for the interface (NetworkManager on
 # the Debian disk root, or a stray supplicant) — that causes an endless

@@ -27,7 +27,7 @@ while true; do
     exec sleep infinity
   fi
   log "dropbear listening on 0.0.0.0:${PORT}"
-  dropbear -F -E -p "0.0.0.0:${PORT}"
+  dropbear -F -E -r /etc/dropbear/dropbear_ed25519_host_key -p "0.0.0.0:${PORT}"
   rc=$?
   log "dropbear exited rc=$rc; retrying in 3s"
   sleep 3
