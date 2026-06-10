@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Small registry <-> systemd bridge for Altitude.
+#
+# systemd remains the lifecycle owner. The registry records intent, results and
+# observed state so tools can present a unified control surface.
+set -euo pipefail
+
+REG="${ALTITUDE_REGISTRY_BIN:-/bin/bdbreg}"
+SYSTEMCTL="${SYSTEMCTL_BIN:-systemctl}"
+OWNER=systemd-bridge
+
+usage() {
+  cat <<'EOF'
+usage: systemd-bridge <command> [args]
+
+  refresh                         refresh registry/systemd/health audits
+  list                            list failed units mirrored by systemd-audit
+  status UNIT                     show one unit and record the observation
+  request ACTION UNIT             run a systemctl action and record the result
+
+actions: start stop restart reload try-restart enable disable status
+
+The bridge never stores service definitions in BDB. It only records requests,
+results and observed systemd state under /system/systemd/bridge.
+EOF
+}
+
+die() {
+  echo "systemd-bridge: $*" >&2
+  exit 1
+}
+
+valid_unit() {
+  case "$1" in
+    *$'\n'*|*$'\t'*|''|/*|*..*|*' '*|*';'*|*'|'*|*'&'*|*'`'*|*'$'*)
+      return 1
+      ;;
+    *.service|*.socket|*.timer|*.target|*.mount|*.path)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+valid_action() {
+  case "$1" in
+    start|stop|restart|reload|try-restart|enable|disable|status) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+registry_set() {
+  local path="$1" type="$2" value="$3"
+  [ -x "$REG" ] || return 0
+  "$REG" set "$path" "$type" "$value" "$OWNER" >/dev/null 2>&1 || true
+}
+
+refresh_audits() {
+  [ -x /bin/registry-audit ] && /bin/registry-audit refresh >/dev/null 2>&1 || true
+  [ -x /bin/systemd-audit ] && /bin/systemd-audit refresh >/dev/null 2>&1 || true
+  [ -x /bin/altitude-health ] && /bin/altitude-health refresh >/dev/null 2>&1 || true
+  registry_set /system/systemd/bridge/enabled bool true
+  registry_set /system/systemd/bridge/control bool true
+  registry_set /system/systemd/bridge/updated-at int "$(date +%s 2>/dev/null || echo 0)"
+}
+
+mark_bridge() {
+  registry_set /system/systemd/bridge/enabled bool true
+  registry_set /system/systemd/bridge/control bool true
+  registry_set /system/systemd/bridge/updated-at int "$(date +%s 2>/dev/null || echo 0)"
+}
+
+record_result() {
+  local action="$1" unit="$2" rc="$3"
+  registry_set /system/systemd/bridge/last/action string "$action"
+  registry_set /system/systemd/bridge/last/unit string "$unit"
+  registry_set /system/systemd/bridge/last/rc int "$rc"
+  registry_set /system/systemd/bridge/last/ok bool "$([ "$rc" = 0 ] && echo true || echo false)"
+  registry_set /system/systemd/bridge/last/updated-at int "$(date +%s 2>/dev/null || echo 0)"
+}
+
+cmd_refresh() {
+  refresh_audits
+  echo "systemd-bridge: refreshed"
+}
+
+cmd_list() {
+  mark_bridge
+  if [ -x /bin/systemd-audit ]; then
+    /bin/systemd-audit list
+  else
+    "$SYSTEMCTL" --failed --no-pager
+  fi
+}
+
+cmd_status() {
+  local unit="${1:-}"
+  valid_unit "$unit" || die "invalid unit: $unit"
+  registry_set /system/systemd/bridge/request/action string status
+  registry_set /system/systemd/bridge/request/unit string "$unit"
+  registry_set /system/systemd/bridge/request/updated-at int "$(date +%s 2>/dev/null || echo 0)"
+  mark_bridge
+  set +e
+  "$SYSTEMCTL" status "$unit" --no-pager -l
+  local rc=$?
+  set -e
+  record_result status "$unit" "$rc"
+  return "$rc"
+}
+
+cmd_request() {
+  local action="${1:-}" unit="${2:-}" rc
+  valid_action "$action" || die "invalid action: $action"
+  valid_unit "$unit" || die "invalid unit: $unit"
+  registry_set /system/systemd/bridge/request/action string "$action"
+  registry_set /system/systemd/bridge/request/unit string "$unit"
+  registry_set /system/systemd/bridge/request/updated-at int "$(date +%s 2>/dev/null || echo 0)"
+  mark_bridge
+  set +e
+  if [ "$action" = status ]; then
+    "$SYSTEMCTL" status "$unit" --no-pager -l
+  else
+    "$SYSTEMCTL" "$action" "$unit"
+  fi
+  rc=$?
+  set -e
+  record_result "$action" "$unit" "$rc"
+  return "$rc"
+}
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  refresh) cmd_refresh ;;
+  list) cmd_list ;;
+  status) cmd_status "$@" ;;
+  request) cmd_request "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 64 ;;
+esac

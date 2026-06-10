@@ -134,6 +134,11 @@ app.connect('activate', application => {
         ['Modules', ['/bin/bash', '-lc', '/bin/bdb select modules 2>&1 || /bin/bdb dump modules 2>&1']],
         ['Registry', ['/bin/bash', '-lc', '/bin/bdb select registry 2>&1 || /bin/bdb dump registry 2>&1']],
         ['Audit', ['/bin/bash', '-lc', '/bin/registry-audit refresh 2>&1; echo; /bin/bdbreg list /system 2>&1']],
+        ['Systemd Bridge', ['/bin/bash', '-lc',
+            '/bin/systemd-bridge refresh 2>&1; ' +
+            'echo; echo "== failed units =="; /bin/systemd-bridge list 2>&1; ' +
+            'echo; echo "== bridge registry =="; /bin/bdbreg list /system/systemd/bridge 2>&1'
+        ]],
         ['Health', ['/bin/bash', '-lc',
             '/bin/altitude-health summary 2>&1; ' +
             'echo; echo "== registry =="; /bin/bdbreg list /system/health 2>&1; ' +
