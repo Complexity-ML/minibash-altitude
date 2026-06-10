@@ -56,6 +56,22 @@ app.connect('activate', application => {
     });
     root.append(buttons);
 
+    const commandBar = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 8,
+    });
+    root.append(commandBar);
+
+    const commandEntry = new Gtk.Entry({
+        text: 'ip -4 -br a',
+        placeholder_text: 'command to send to Altitude Command Runner',
+        hexpand: true,
+    });
+    commandBar.append(commandEntry);
+
+    const sendButton = new Gtk.Button({ label: 'Send to Terminal' });
+    commandBar.append(sendButton);
+
     const view = new Gtk.TextView({
         editable: false,
         monospace: true,
@@ -72,6 +88,29 @@ app.connect('activate', application => {
 
     function show(label, argv) {
         buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\n${runCommand(argv)}`, -1);
+    }
+
+    function shell(script) {
+        return ['/bin/bash', '-lc', script];
+    }
+
+    function commandText() {
+        return commandEntry.get_text().trim();
+    }
+
+    function sendToTerminal() {
+        const command = commandText();
+        if (command === '') {
+            buffer.set_text('Terminal\n========\n\nNo command to send.\n', -1);
+            return;
+        }
+        const quoted = GLib.shell_quote(command);
+        show('Terminal', shell(
+            '/bin/appreg launch altitude-command-runner >/tmp/altitude-command-runner.log 2>&1 & ' +
+            `sleep 1; /bin/terminal-write ${quoted} 2>&1; ` +
+            'sleep 1; echo; echo "== registry =="; /bin/bdbreg list /system/terminal 2>&1; ' +
+            'echo; echo "== last output =="; cat /run/altitude-command-runner.last 2>/dev/null || true'
+        ));
     }
 
     const actions = [
@@ -98,8 +137,17 @@ app.connect('activate', application => {
         ['Packages', ['/bin/bash', '-lc', '/bin/pkg list 2>&1 || find /usr/share/altitude/sources -type f -maxdepth 1 2>/dev/null | sort']],
         ['Software', ['/bin/bash', '-lc', '/bin/pkg refresh 2>&1; echo; /bin/pkg search 2>&1 | sed -n "1,80p"']],
         ['Apps', ['/bin/bash', '-lc', '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1']],
+        ['Terminal State', ['/bin/bash', '-lc',
+            'echo "== terminal registry =="; /bin/bdbreg list /system/terminal 2>&1; ' +
+            'echo; echo "== last output =="; cat /run/altitude-command-runner.last 2>/dev/null || true; ' +
+            'echo; echo "== runner =="; pgrep -a -f "/bin/altitude-command-runner" || true'
+        ]],
+        ['Open Runner', ['/bin/bash', '-lc', '/bin/appreg launch altitude-command-runner >/tmp/altitude-command-runner.log 2>&1 & echo "Altitude Command Runner requested."']],
         ['GNOME Log', ['/bin/bash', '-lc', 'tail -160 /var/log/gnome-shell.log 2>&1']],
     ];
+
+    sendButton.connect('clicked', sendToTerminal);
+    commandEntry.connect('activate', sendToTerminal);
 
     for (const [label, argv] of actions) {
         const button = new Gtk.Button({ label });
