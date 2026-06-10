@@ -45,11 +45,14 @@ BUILD_TRIPLET="$("$WORK/source/build-aux/config.guess")"
       --build="$BUILD_TRIPLET" --host="$TARGET" \
       --prefix=/usr --libdir=/usr/lib \
       --enable-shared --enable-static --disable-doxygen-doc
+  sed -i "s/^hardcode_into_libs=.*/hardcode_into_libs=no/" libtool
   make -j"$JOBS"
   make DESTDIR="$PAYLOAD" install
 )
 
 "$STRIP" --strip-unneeded "$PAYLOAD"/usr/lib/libthai.so.* 2>/dev/null || true
+find "$PAYLOAD/usr/lib" -name '*.la' -delete 2>/dev/null || true
+rm -f "$SYSROOT/usr/lib/libthai.la"
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 
 {

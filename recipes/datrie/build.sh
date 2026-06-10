@@ -43,6 +43,8 @@ BUILD_TRIPLET="$("$CONFIG_GUESS")"
 )
 
 "$STRIP" --strip-unneeded "$PAYLOAD"/usr/lib/libdatrie.so.* 2>/dev/null || true
+find "$PAYLOAD/usr/lib" -name '*.la' -delete 2>/dev/null || true
+rm -f "$SYSROOT/usr/lib/libdatrie.la"
 cp -a "$PAYLOAD/usr/." "$SYSROOT/usr/"
 
 # libthai needs a host trietool while cross-building its generated data.

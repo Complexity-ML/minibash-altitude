@@ -59,5 +59,8 @@ awk '
 ' "$ROOT/sources/SOURCES.lock"
 
 grep -q -- '-Dgnutls=true' "$ROOT/recipes/vte/build.sh"
+grep -q 'hardcode_into_libs=no' "$ROOT/recipes/libthai/build.sh"
+grep -q "name '\\*.la' -delete" "$ROOT/recipes/datrie/build.sh"
+grep -q "name '\\*.la' -delete" "$ROOT/recipes/libthai/build.sh"
 
 echo "GNOME source recipes: ok"
