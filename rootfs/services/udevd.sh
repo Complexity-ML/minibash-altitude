@@ -11,7 +11,7 @@ udevd_running() {
 }
 
 mkdir -p /run/udev /run/udev/data
-for m in evdev mousedev usbhid hid_generic i2c_hid i2c_hid_acpi psmouse; do
+for m in evdev mousedev hid usbhid hid_generic i2c_hid i2c_hid_acpi psmouse; do
   modprobe "$m" 2>/dev/null || true
 done
 

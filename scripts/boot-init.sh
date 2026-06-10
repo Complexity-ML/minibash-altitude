@@ -36,10 +36,6 @@ for m in libata libahci ahci ata_piix ata_generic sata_nv sata_via sata_sil \
          vfat nls_cp437 nls_ascii nls_iso8859_1; do
   $BB modprobe "$m" 2>/dev/null
 done
-# ...and brute-force insmod everything we shipped, in case a name differs.
-for ko in $($BB find /lib/modules -name '*.ko' 2>/dev/null); do
-  $BB insmod "$ko" 2>/dev/null
-done
 $BB sleep 3
 
 # Parse root= / rootfstype= from the kernel command line.

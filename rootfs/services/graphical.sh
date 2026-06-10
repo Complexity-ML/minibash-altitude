@@ -45,7 +45,7 @@ udevd_running() {
 
 # GPU, input and seat plumbing. HP Omen uses NVIDIA TU116 as the visible panel
 # device, so nouveau must be present before udev cold-plugs DRM.
-for m in evdev mousedev usbhid hid_generic i2c_hid i2c_hid_acpi psmouse \
+for m in evdev mousedev hid usbhid hid_generic i2c_hid i2c_hid_acpi psmouse \
          mxm-wmi drm_ttm_helper gpu-sched nouveau; do
   modprobe "$m" 2>/dev/null || true
 done

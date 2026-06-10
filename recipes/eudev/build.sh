@@ -48,6 +48,11 @@ BUILD_TRIPLET="$("$WORK/source/config.guess")"
   make DESTDIR="$PAYLOAD" install
 )
 
+sed -i '/IMPORT{builtin}="net_driver"/d' \
+  "$PAYLOAD/usr/lib/udev/rules.d/50-udev-default.rules" 2>/dev/null || true
+sed -i '/IMPORT{builtin}="net_setup_link"/d' \
+  "$PAYLOAD/usr/lib/udev/rules.d/80-net-setup-link.rules" 2>/dev/null || true
+
 find "$PAYLOAD/usr/lib" -name '*.la' -delete
 "$STRIP" --strip-unneeded "$PAYLOAD"/usr/lib/libudev.so.* 2>/dev/null || true
 install -d "$SYSROOT/usr"
