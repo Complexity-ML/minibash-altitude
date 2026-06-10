@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Send a command to the Altitude Command Runner through the registry.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: terminal-write COMMAND...
+
+Writes COMMAND into the BDB registry terminal inbox. If Altitude Command Runner
+is open, it picks the command up, displays it, and runs it.
+EOF
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ "$#" -eq 0 ]; then
+  usage
+  [ "$#" -eq 0 ] && exit 64 || exit 0
+fi
+
+command="$*"
+seq="$(date +%s 2>/dev/null || echo 0).$$"
+bdbreg="${BDBREG_BIN:-/bin/bdbreg}"
+
+"$bdbreg" set /system/terminal/inbox/command string "$command" terminal-write >/dev/null
+"$bdbreg" set /system/terminal/inbox/seq string "$seq" terminal-write >/dev/null
+echo "terminal-write: queued command $seq"

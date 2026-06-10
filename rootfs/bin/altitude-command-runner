@@ -9,6 +9,40 @@ function bytesToString(bytes) {
     return bytes ? ByteArray.toString(bytes) : '';
 }
 
+function registryValue(path) {
+    try {
+        const [ok, stdout] = GLib.spawn_sync(
+            null,
+            ['/bin/bdbreg', 'get', path],
+            null,
+            GLib.SpawnFlags.SEARCH_PATH,
+            null
+        );
+        if (!ok)
+            return '';
+        const lines = bytesToString(stdout).trim().split('\n');
+        if (lines.length < 2)
+            return '';
+        const fields = lines[lines.length - 1].split('\t');
+        return fields.length >= 3 ? fields[2] : '';
+    } catch (e) {
+        return '';
+    }
+}
+
+function registrySet(path, type, value) {
+    try {
+        GLib.spawn_sync(
+            null,
+            ['/bin/bdbreg', 'set', path, type, String(value), 'altitude-command-runner'],
+            null,
+            GLib.SpawnFlags.SEARCH_PATH,
+            null
+        );
+    } catch (e) {
+    }
+}
+
 const app = new Gtk.Application({
     application_id: 'org.altitude.CommandRunner',
     flags: Gio.ApplicationFlags.FLAGS_NONE,
@@ -60,6 +94,7 @@ app.connect('activate', application => {
     function run() {
         const command = entry.get_text();
         let text;
+        let exitStatus = 0;
         try {
             const [ok, stdout, stderr, status] = GLib.spawn_sync(
                 null,
@@ -69,16 +104,40 @@ app.connect('activate', application => {
                 null
             );
             text = `$ ${command}\n\n${bytesToString(stdout)}${bytesToString(stderr)}`;
-            if (!ok || status !== 0)
-                text += `\nexit: ${status}\n`;
+            exitStatus = status;
+            if (!ok || exitStatus !== 0)
+                text += `\nexit: ${exitStatus}\n`;
         } catch (e) {
             text = `$ ${command}\n\n${e.message}\n`;
+            exitStatus = 1;
         }
         buffer.set_text(text, -1);
+        try {
+            GLib.file_set_contents('/run/altitude-command-runner.last', text);
+        } catch (e) {
+        }
+        registrySet('/system/terminal/last/command', 'string', command);
+        registrySet('/system/terminal/last/status', 'int', exitStatus);
+        registrySet('/system/terminal/last/output-file', 'string', '/run/altitude-command-runner.last');
+    }
+
+    let lastRegistrySeq = registryValue('/system/terminal/inbox/seq');
+    function pollRegistryInbox() {
+        const seq = registryValue('/system/terminal/inbox/seq');
+        if (seq !== '' && seq !== lastRegistrySeq) {
+            lastRegistrySeq = seq;
+            const command = registryValue('/system/terminal/inbox/command');
+            if (command !== '') {
+                entry.set_text(command);
+                run();
+            }
+        }
+        return GLib.SOURCE_CONTINUE;
     }
 
     runButton.connect('clicked', run);
     entry.connect('activate', run);
+    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, pollRegistryInbox);
 
     win.set_child(root);
     win.present();
