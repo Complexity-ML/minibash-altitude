@@ -148,7 +148,7 @@ for path in \
   bin/altitude bin/bdb bin/bdbql bin/bdbsh bin/bdbctl bin/bdbreg bin/bdbconf \
   bin/appreg bin/systemd-audit bin/login bin/passwd bin/pkg bin/altpkg-build bin/altrepo \
   bin/altitude-software \
-  etc/altitude etc/minibash etc/systemd etc/os-release etc/lsb-release etc/hostname \
+  etc/altitude etc/elogind etc/minibash etc/systemd etc/os-release etc/lsb-release etc/hostname \
   etc/issue etc/passwd etc/group etc/shells services; do
   [ -e "$ROOT/rootfs/$path" ] || continue
   mkdir -p "$PAYLOAD/$(dirname "$path")"
