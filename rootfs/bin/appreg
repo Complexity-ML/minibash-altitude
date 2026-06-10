@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# Native application registry backed by BDB and populated from .desktop files.
+set -euo pipefail
+
+export BDB_PATH="${BDB_PATH:-/var/bdb}"
+BDB="${BDB_BIN:-/bin/bdb}"
+APP_DIRS="${APPREG_DIRS:-/usr/share/applications:/usr/local/share/applications}"
+
+die() { echo "appreg: $*" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+usage: appreg <command> [args]
+
+  refresh             scan .desktop files into app_registry
+  list                list registered graphical applications
+  search TERM         search registered applications
+  info APP_ID         show one registered application
+  launch APP_ID       run the registered Exec command
+
+The registry is derived from standard Linux .desktop files. Apps stay portable;
+Altitude adds indexing, policy and package metadata around them.
+EOF
+}
+
+ensure_bdb() {
+  "$BDB" tables >/dev/null 2>&1 && return 0
+  mkdir -p "$BDB_PATH"
+  if [ -d /etc/minibash/bdb ] && [ ! -f "$BDB_PATH/tables/registry/data.bdb" ]; then
+    (cd /etc/minibash/bdb && tar -cf - .) | (cd "$BDB_PATH" && tar -xf -)
+  fi
+  "$BDB" init >/dev/null 2>&1 || true
+}
+
+have_table() { ensure_bdb; "$BDB" tables 2>/dev/null | grep -qx app_registry; }
+
+ensure_table() {
+  have_table && return 0
+  "$BDB" create app_registry id:text:pk name:text exec:text desktop:text \
+    categories:text package:text installed:bool visible:bool description:text \
+    >/dev/null
+}
+
+desktop_value() {
+  local key="$1" file="$2"
+  awk -v key="$key" '
+    /^\[/ { in_desktop = ($0 == "[Desktop Entry]") }
+    in_desktop && index($0, key "=") == 1 {
+      print substr($0, length(key) + 2)
+      exit
+    }
+  ' "$file"
+}
+
+desktop_id() {
+  local file="$1"
+  printf '%s' "$(basename "$file" .desktop)" | tr -c 'A-Za-z0-9_.+-' '-'
+}
+
+package_for_desktop() {
+  local file="$1" state paths
+  for state in /var/lib/altitude/packages/*; do
+    [ -d "$state" ] || continue
+    paths="$state/paths"
+    [ -f "$paths" ] || continue
+    if grep -qx "payload${file}" "$paths" 2>/dev/null ||
+       grep -qx "payload/${file#/}" "$paths" 2>/dev/null; then
+      basename "$state"
+      return 0
+    fi
+  done
+}
+
+upsert_app() {
+  local id="$1" name="$2" exec="$3" desktop="$4" categories="$5" package="$6" visible="$7" description="$8"
+  if "$BDB" select app_registry --where "id=$id" 2>/dev/null | tail -n +2 | grep -q .; then
+    "$BDB" update app_registry --where "id=$id" name="$name" exec="$exec" \
+      desktop="$desktop" categories="$categories" package="$package" installed=true \
+      visible="$visible" description="$description" >/dev/null
+  else
+    "$BDB" insert app_registry id="$id" name="$name" exec="$exec" \
+      desktop="$desktop" categories="$categories" package="$package" installed=true \
+      visible="$visible" description="$description" >/dev/null
+  fi
+}
+
+cmd_refresh() {
+  local dir file id type name exec no_display hidden categories package description visible count=0 list
+  ensure_table
+  "$BDB" dump app_registry 2>/dev/null | tail -n +2 | cut -f1 |
+    while IFS= read -r old_id; do
+      [ -n "$old_id" ] || continue
+      "$BDB" delete app_registry --where "id=$old_id" >/dev/null 2>&1 || true
+    done
+  IFS=: read -r -a dirs <<< "$APP_DIRS"
+  for dir in "${dirs[@]}"; do
+    [ -d "$dir" ] || continue
+    list="$(mktemp)"
+    find "$dir" -maxdepth 1 -type f -name '*.desktop' | sort > "$list"
+    while IFS= read -r file; do
+      type="$(desktop_value Type "$file")"
+      [ "$type" = Application ] || continue
+      name="$(desktop_value Name "$file")"
+      exec="$(desktop_value Exec "$file")"
+      [ -n "$name" ] && [ -n "$exec" ] || continue
+      hidden="$(desktop_value Hidden "$file")"
+      [ "$hidden" = true ] && continue
+      no_display="$(desktop_value NoDisplay "$file")"
+      categories="$(desktop_value Categories "$file")"
+      description="$(desktop_value Comment "$file")"
+      id="$(desktop_id "$file")"
+      package="$(package_for_desktop "$file")"
+      visible=true
+      [ "$no_display" = true ] && visible=false
+      upsert_app "$id" "$name" "$exec" "$file" "$categories" "$package" "$visible" "$description"
+      count=$((count + 1))
+    done < "$list"
+    rm -f "$list"
+  done
+  echo "appreg: indexed $count applications"
+}
+
+cmd_list() {
+  ensure_table
+  printf '%-36s %-28s %-10s %s\n' ID NAME PACKAGE EXEC
+  "$BDB" dump app_registry 2>/dev/null | tail -n +2 |
+    awk -F '\t' '$8 == "true" {
+      printf "%-36s %-28s %-10s %s\n", $1, $2, $6, $3
+    }'
+}
+
+cmd_search() {
+  local term="${1:-}"
+  ensure_table
+  "$BDB" dump app_registry 2>/dev/null | tail -n +2 |
+    awk -F '\t' -v term="$term" '
+      $8 == "true" && (term == "" || index(tolower($1 " " $2 " " $5 " " $9), tolower(term))) {
+        printf "%-36s %-28s %-10s %s\n", $1, $2, $6, $9
+      }'
+}
+
+cmd_info() {
+  local id="${1:-}"
+  [ -n "$id" ] || die "missing app id"
+  ensure_table
+  "$BDB" select app_registry --where "id=$id"
+}
+
+launch_exec() {
+  local command="$1"
+  command="${command//%f/}"
+  command="${command//%F/}"
+  command="${command//%u/}"
+  command="${command//%U/}"
+  command="${command//%i/}"
+  command="${command//%c/}"
+  command="${command//%k/}"
+  exec /bin/sh -lc "$command"
+}
+
+cmd_launch() {
+  local id="${1:-}" command
+  [ -n "$id" ] || die "missing app id"
+  ensure_table
+  command="$("$BDB" select app_registry --where "id=$id" 2>/dev/null |
+    tail -n +2 | tail -n 1 | cut -f3)"
+  [ -n "$command" ] || die "app not found: $id"
+  launch_exec "$command"
+}
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  refresh) cmd_refresh "$@" ;;
+  list) cmd_list "$@" ;;
+  search) cmd_search "$@" ;;
+  info) cmd_info "$@" ;;
+  launch) cmd_launch "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 64 ;;
+esac

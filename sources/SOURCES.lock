@@ -698,6 +698,11 @@ Version: 257.16
 URL: https://codeload.github.com/elogind/elogind/tar.gz/refs/tags/v257.16
 SHA256: 3c8146409bfb9daa77f272212c2b0bf0ae727c782ec87ece0d2d25e0e5bf5f4c
 
+Source: systemd
+Version: 257.13
+URL: https://github.com/systemd/systemd/archive/refs/tags/v257.13.tar.gz
+SHA256: 1eb7d5f9ff8a426ff880a3cded9ce819613ba8003ac5ddde9eca162f14ddabe7
+
 Source: polkit
 Version: 126
 URL: https://codeload.github.com/polkit-org/polkit/tar.gz/refs/tags/126

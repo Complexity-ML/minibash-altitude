@@ -12,35 +12,6 @@ BDB=/bin/bdb
 
 have_table() { $BDB tables 2>/dev/null | grep -qx "$1"; }
 
-# --- services: one row per /services/*.sh ----------------------------------
-if ! have_table services; then
-  $BDB create services name:text:pk command:text autostart:bool restart:bool \
-    desired:text status:text pid:int description:text >/dev/null
-  for f in /services/*.sh; do
-    [ -e "$f" ] || continue
-    n=$(basename "$f" .sh)
-    r=true
-    case "$n" in
-      graphical|desktopd|displayd|dbus|elogind|polkit|upower|accounts|udisksd|wpasupp|netmgr)
-        on=false
-        want=down
-        ;;
-      keymap|kmod|mountd|sysctld) on=true; want=up; r=false ;;  # oneshot reconcilers
-      *)                  on=true;  want=up ;;
-    esac
-    $BDB insert services name="$n" command="$f" autostart="$on" restart="$r" \
-      desired="$want" status=stopped pid=0 description="service $n" >/dev/null
-  done
-fi
-
-# Add control-plane services introduced after the first database creation.
-if [ -x /services/reconciled.sh ] && \
-   ! $BDB dump services 2>/dev/null | cut -f1 | grep -qx reconciled; then
-  $BDB insert services name=reconciled command=/services/reconciled.sh \
-    autostart=true restart=true desired=up status=stopped pid=0 \
-    description="BDB control-plane reconciliation loop" >/dev/null
-fi
-
 # --- modules: KERNEL MODULES, driven by the DB -----------------------------
 # This is the "kernel services via the database" piece. `ccm` + aes were THE
 # missing modules that broke WiFi for days (mac80211 could not install the WPA
@@ -129,10 +100,24 @@ ensure_control_domain() {
 ensure_control_domain modules
 ensure_control_domain mounts
 ensure_control_domain sysctl
+ensure_control_domain app_registry
 
 if ! have_table events; then
   $BDB create events id:text:pk timestamp:int domain:text generation:int \
     action:text result:text message:text >/dev/null
+fi
+
+# --- app registry: indexed native Linux applications -----------------------
+if ! have_table app_registry; then
+  $BDB create app_registry id:text:pk name:text exec:text desktop:text \
+    categories:text package:text installed:bool visible:bool description:text \
+    >/dev/null
+fi
+
+# --- systemd audit: observed state only, never service control --------------
+if ! have_table systemd_audit; then
+  $BDB create systemd_audit unit:text:pk load:text active:text sub:text \
+    description:text updated_at:int >/dev/null
 fi
 
 # --- registry: typed hierarchical system/application configuration ----------
@@ -164,31 +149,13 @@ ensure_registry /system/package/manager string altpkg system
 ensure_registry /system/package/registry string altitude-main system
 ensure_registry /system/package/registry/enabled bool true system
 ensure_registry /system/package/registry/url string file:///var/lib/altitude/repository system
+ensure_registry /system/apps/registry string app_registry system
+ensure_registry /system/apps/source string desktop-files system
+ensure_registry /system/apps/autorefresh bool true system
+ensure_registry /system/systemd/audit/enabled bool true system
+ensure_registry /system/systemd/audit/table string systemd_audit system
+ensure_registry /system/systemd/audit/control bool false system
+ensure_registry /system/systemd/runtime/present bool false system
+ensure_registry /system/systemd/runtime/pid1 bool false system
 ensure_registry /system/init/provider string busybox-init system
-ensure_registry /system/init/systemd/compatible bool true system
 ensure_registry /system/init/systemd/required bool false system
-
-# --- service dependencies: systemd-like requires/after/before relationships -
-if ! have_table service_dependencies; then
-  $BDB create service_dependencies id:text:pk service:text relation:text \
-    target:text >/dev/null
-fi
-
-ensure_dependency() {
-  service="$1"; relation="$2"; target="$3"
-  id="${service}:${relation}:${target}"
-  $BDB dump service_dependencies 2>/dev/null | cut -f1 | grep -qx "$id" &&
-    return 0
-  $BDB insert service_dependencies id="$id" service="$service" \
-    relation="$relation" target="$target" >/dev/null
-}
-ensure_dependency netmgr requires dbus
-ensure_dependency polkit requires dbus
-ensure_dependency upower requires dbus
-ensure_dependency accounts requires dbus
-ensure_dependency graphical requires dbus
-ensure_dependency graphical requires elogind
-ensure_dependency graphical requires polkit
-ensure_dependency graphical after udevd
-ensure_dependency displayd after graphical
-ensure_dependency sshd after netmgr

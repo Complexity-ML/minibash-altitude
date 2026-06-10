@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # bdb front controller. Runtime storage is native BDB only.
 set -euo pipefail
+export BDB_PATH="${BDB_PATH:-/var/bdb}"
 
 if [ -x /bin/bdbc ]; then
   case "${1:-}" in

@@ -48,6 +48,7 @@ desktop_packages=(
   altitude-pcre2
   altitude-libxcrypt
   altitude-dbus
+  altitude-systemd
   altitude-glib
   altitude-cantarell-fonts
   altitude-freetype

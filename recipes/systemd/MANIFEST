@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-systemd
+Version: 257.13
+Architecture: amd64
+Description: systemd service manager and tools for Altitude

@@ -92,13 +92,11 @@ app.connect('activate', application => {
         ['Installed', () => show('Installed Packages', ['/bin/pkg', 'list'])],
         ['Updates', () => show('Package Updates', ['/bin/pkg', 'check-updates'])],
         ['Apps', () => show('Native Applications', ['/bin/bash', '-lc',
-            'for f in /usr/share/applications/*.desktop; do ' +
-            'name=$(sed -n "s/^Name=//p" "$f" | head -1); ' +
-            'exec=$(sed -n "s/^Exec=//p" "$f" | head -1); ' +
-            '[ -n "$name" ] && printf "%-32s %s\\n" "$name" "$exec"; ' +
-            'done | sort'])],
+            '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1'])],
+        ['App Search', () => show('Search Applications', ['/bin/bash', '-lc',
+            `/bin/appreg refresh 2>&1; echo; /bin/appreg search ${GLib.shell_quote(term())} 2>&1`])],
         ['Registry', () => show('Package Registry', ['/bin/bash', '-lc',
-            '/bin/bdbreg list /system/package 2>&1; echo; /bin/bdbreg list /system/init 2>&1'])],
+            '/bin/bdbreg list /system/package 2>&1; echo; /bin/bdbreg list /system/apps 2>&1; echo; /bin/bdbreg list /system/init 2>&1'])],
     ];
 
     for (const [label, callback] of actions) {

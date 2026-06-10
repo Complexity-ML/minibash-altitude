@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Mirror systemd unit state into BDB. This never manages services.
+set -euo pipefail
+
+export BDB_PATH="${BDB_PATH:-/var/bdb}"
+BDB="${BDB_BIN:-/bin/bdb}"
+
+usage() {
+  cat <<'EOF'
+usage: systemd-audit [refresh|list]
+
+Reads systemd state with systemctl and stores an observed snapshot in the
+systemd_audit BDB table. It does not start, stop, enable or disable units.
+EOF
+}
+
+have_table() { "$BDB" tables 2>/dev/null | grep -qx systemd_audit; }
+
+ensure_bdb() {
+  "$BDB" tables >/dev/null 2>&1 && return 0
+  mkdir -p "$BDB_PATH"
+  if [ -d /etc/minibash/bdb ] && [ ! -f "$BDB_PATH/tables/registry/data.bdb" ]; then
+    (cd /etc/minibash/bdb && tar -cf - .) | (cd "$BDB_PATH" && tar -xf -)
+  fi
+  "$BDB" init >/dev/null 2>&1 || true
+}
+
+ensure_table() {
+  ensure_bdb
+  have_table && return 0
+  "$BDB" create systemd_audit unit:text:pk load:text active:text sub:text \
+    description:text updated_at:int >/dev/null
+}
+
+upsert_unit() {
+  local unit="$1" load="$2" active="$3" sub="$4" description="$5" now="$6"
+  if "$BDB" select systemd_audit --where "unit=$unit" 2>/dev/null | tail -n +2 | grep -q .; then
+    "$BDB" update systemd_audit --where "unit=$unit" load="$load" active="$active" \
+      sub="$sub" description="$description" updated_at="$now" >/dev/null
+  else
+    "$BDB" insert systemd_audit unit="$unit" load="$load" active="$active" \
+      sub="$sub" description="$description" updated_at="$now" >/dev/null
+  fi
+}
+
+cmd_refresh() {
+  ensure_table
+  command -v systemctl >/dev/null 2>&1 || {
+    echo "systemd-audit: systemctl missing; no systemd state collected"
+    return 0
+  }
+  local now count=0
+  now="$(date +%s 2>/dev/null || echo 0)"
+  systemctl list-units --all --no-legend --no-pager 2>/dev/null |
+    while read -r unit load active sub rest; do
+      [ -n "${unit:-}" ] || continue
+      upsert_unit "$unit" "$load" "$active" "$sub" "$rest" "$now"
+      count=$((count + 1))
+      echo "$count" >/tmp/systemd-audit-count.$$
+    done
+  count="$(cat /tmp/systemd-audit-count.$$ 2>/dev/null || echo 0)"
+  rm -f /tmp/systemd-audit-count.$$
+  echo "systemd-audit: observed $count units"
+}
+
+cmd_list() {
+  ensure_table
+  printf '%-44s %-8s %-10s %-12s %s\n' UNIT LOAD ACTIVE SUB DESCRIPTION
+  "$BDB" dump systemd_audit 2>/dev/null | tail -n +2 |
+    awk -F '\t' '{ printf "%-44s %-8s %-10s %-12s %s\n", $1, $2, $3, $4, $5 }'
+}
+
+command="${1:-refresh}"
+case "$command" in
+  refresh) cmd_refresh ;;
+  list) cmd_list ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 64 ;;
+esac

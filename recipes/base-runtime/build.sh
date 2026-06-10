@@ -69,9 +69,8 @@ fi
 
 for path in \
   bin/altitude bin/bdb bin/bdbql bin/bdbsh bin/bdbctl bin/bdbreg bin/bdbconf \
-  bin/bashsvc bin/login bin/passwd bin/pkg bin/altpkg-build bin/altrepo \
+  bin/appreg bin/systemd-audit bin/login bin/passwd bin/pkg bin/altpkg-build bin/altrepo \
   bin/altitude-software \
-  bin/minibash-services \
   etc/altitude etc/minibash etc/os-release etc/lsb-release etc/hostname \
   etc/issue etc/passwd etc/group etc/shells services; do
   [ -e "$ROOT/rootfs/$path" ] || continue
@@ -104,33 +103,25 @@ chmod 1777 /tmp /dev/shm
 ln -sfn /proc/self/fd /dev/fd
 hostname altitude
 echo /sbin/modprobe > /proc/sys/kernel/modprobe 2>/dev/null || true
-if [ ! -f /var/bdb/tables/services/data.bdb ]; then
+if [ ! -f /var/bdb/tables/registry/data.bdb ]; then
   cp -a /etc/minibash/bdb/. /var/bdb/
 fi
 
-# Bring SSH up before the rest of the service table. Dropbear can listen before
-# DHCP finishes, so remote repair remains available as soon as the WiFi lease
-# appears.
+# Bring SSH up early. Dropbear can listen before DHCP finishes, so remote
+# repair remains available as soon as the WiFi lease appears.
 if [ -x /services/sshd.sh ] && ! pgrep -x dropbear >/dev/null 2>&1; then
   setsid /services/sshd.sh >>/var/log/service-sshd-early.log 2>&1 &
 fi
 
-# Service layer for the native slot. BusyBox init has no minit, so start every
-# service whose desired state is 'up' in the database, backgrounded. This is the
-# bdb-driven control plane: edit `desired` and the slot follows. Each service
-# gets a log so a failed network boot remains diagnosable from Debian repair.
-if [ -x /bin/bdb ] && [ -f /var/bdb/tables/services/data.bdb ]; then
-  /bin/bdb dump services 2>/dev/null | tail -n +2 | while IFS= read -r row; do
-    name=$(printf '%s' "$row" | cut -f1)
-    cmd=$(printf '%s' "$row" | cut -f2)
-    desired=$(printf '%s' "$row" | cut -f5)
-    [ "$desired" = up ] && [ -n "$cmd" ] && [ -x "$cmd" ] || continue
-    echo "[altitude] start $name"
-    setsid "$cmd" >>"/var/log/service-$name.log" 2>&1 &
-  done
-fi
+# Native boot services are external scripts, not BDB rows. Systemd can replace
+# this list later; the BDB only audits systemd state through systemd_audit.
+for name in keymap kmod mountd sysctld clock syslog wifi netd netmgr healthd metrics cron updated pkgd web; do
+  cmd="/services/$name.sh"
+  [ -x "$cmd" ] || continue
+  echo "[altitude] start $name"
+  setsid "$cmd" >>"/var/log/service-$name.log" 2>&1 &
+done
 
-# Keep remote repair possible even if the BDB service table is stale.
 if [ -x /services/sshd.sh ] && ! pgrep -x dropbear >/dev/null 2>&1; then
   setsid /services/sshd.sh >>/var/log/service-sshd-fallback.log 2>&1 &
 fi
