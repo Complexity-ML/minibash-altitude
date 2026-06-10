@@ -234,19 +234,32 @@ cd /Users/boris/Dev/minibash-linux
 ./run-docker-iso.sh
 ```
 
-`run-docker-iso.sh` produit deux images :
+Le build desktop natif produit une image disque distribuable :
 
 ```text
-out/altitude-linux.iso                 # ISO Altitude stable
-out/altitude-linux-usb.img             # image USB native UEFI
-out/altitude-linux-disk.img            # image disque installable
+out/altitude-rootfs.tar.gz             # rootfs Altitude desktop signé
+out/altitude-linux-disk.img            # image disque UEFI installable
 ```
 
+L'image disque boote par défaut en Altitude natif avec systemd comme PID 1,
+GNOME, Wi-Fi, SSH de réparation, dépôt `.altpkg` embarqué et registry BDB en
+mode audit/admin. BusyBox reste disponible comme entrée de fallback explicite,
+mais le profil livré n'est plus un minimal.
+
+Pour préparer un dossier de distribution avec manifest et checksums :
+
+```bash
+scripts/release-image.sh out/altitude-linux-disk.img
+```
+
+Le résultat est écrit dans `out/release/` avec `SHA256SUMS`, un manifest de
+release et un README prêt pour GitHub.
+
 La V1 stable utilise `7.0.10-altitude`, compilé depuis une source Linux
-verrouillée par la forge et empaqueté avec ses modules signés. Son profil
-générique x86_64 couvre les familles courantes de GPU, Wi-Fi, Ethernet,
-stockage, USB, audio, Bluetooth et HID : il n'est pas spécifique au HP OMEN.
-Les autres architectures auront leurs propres profils Altitude.
+verrouillée par la forge et empaqueté avec ses modules. Son profil générique
+x86_64 couvre les familles courantes de GPU, Wi-Fi, Ethernet, stockage, USB,
+audio, Bluetooth et HID : il n'est pas spécifique au HP OMEN. Les autres
+architectures auront leurs propres profils Altitude.
 
 Le script `build-desktop-payload.sh` construit le payload desktop séparé, sans
 le gonfler dans l'initramfs. `build-usb.sh` peut l'embarquer dans une deuxième
