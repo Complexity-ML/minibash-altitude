@@ -80,23 +80,44 @@ app.connect('activate', application => {
         buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\n${runCommand(argv)}`, -1);
     }
 
+    function shell(script) {
+        return ['/bin/bash', '-lc', script];
+    }
+
     function term() {
         return entry.get_text().trim();
     }
 
     const actions = [
+        ['Dashboard', () => show('Altitude Software Dashboard', shell(
+            '/bin/registry-audit refresh 2>&1 || true; ' +
+            '/bin/appreg refresh 2>&1 || true; ' +
+            'echo; echo "== System =="; ' +
+            '/bin/bdbreg list /system/product 2>&1; ' +
+            'echo; /bin/bdbreg list /system/network 2>&1; ' +
+            'echo; /bin/bdbreg list /system/desktop 2>&1; ' +
+            'echo; echo "== Applications =="; ' +
+            '/bin/appreg status 2>&1; ' +
+            'echo; /bin/appreg list 2>&1; ' +
+            'echo; echo "== Packages =="; ' +
+            '/bin/pkg check-updates 2>&1'
+        ))],
         ['Refresh', () => show('Refresh Repository', ['/bin/pkg', 'refresh'])],
         ['Search', () => show('Search Packages', ['/bin/pkg', 'search', term()])],
         ['Info', () => show('Package Info', ['/bin/pkg', 'info', term()])],
         ['Install', () => show('Install Package', ['/bin/pkg', 'install', term()])],
         ['Installed', () => show('Installed Packages', ['/bin/pkg', 'list'])],
         ['Updates', () => show('Package Updates', ['/bin/pkg', 'check-updates'])],
-        ['Apps', () => show('Native Applications', ['/bin/bash', '-lc',
-            '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1'])],
-        ['App Search', () => show('Search Applications', ['/bin/bash', '-lc',
-            `/bin/appreg refresh 2>&1; echo; /bin/appreg search ${GLib.shell_quote(term())} 2>&1`])],
-        ['Registry', () => show('Package Registry', ['/bin/bash', '-lc',
-            '/bin/bdbreg list /system/package 2>&1; echo; /bin/bdbreg list /system/apps 2>&1; echo; /bin/bdbreg list /system/init 2>&1'])],
+        ['Apps', () => show('Native Applications', shell(
+            '/bin/appreg refresh 2>&1; echo; /bin/appreg status 2>&1; echo; /bin/appreg list 2>&1'
+        ))],
+        ['App Search', () => show('Search Applications', shell(
+            `/bin/appreg refresh 2>&1; echo; /bin/appreg search ${GLib.shell_quote(term())} 2>&1`
+        ))],
+        ['Launch App', () => show('Launch Application', ['/bin/appreg', 'launch', term()])],
+        ['Registry', () => show('Package Registry', shell(
+            '/bin/bdbreg list /system/package 2>&1; echo; /bin/bdbreg list /system/apps 2>&1; echo; /bin/bdbreg list /system/init 2>&1'
+        ))],
     ];
 
     for (const [label, callback] of actions) {
@@ -109,7 +130,12 @@ app.connect('activate', application => {
 
     win.set_child(root);
     win.present();
-    show('Installed Packages', ['/bin/pkg', 'list']);
+    show('Altitude Software Dashboard', shell(
+        '/bin/registry-audit refresh 2>&1 || true; ' +
+        '/bin/appreg refresh 2>&1 || true; ' +
+        'echo; echo "== Applications =="; /bin/appreg status 2>&1; echo; /bin/appreg list 2>&1; ' +
+        'echo; echo "== Packages =="; /bin/pkg check-updates 2>&1'
+    ));
 });
 
 app.run(ARGV);

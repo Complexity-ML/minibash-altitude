@@ -5,6 +5,7 @@ set -euo pipefail
 export BDB_PATH="${BDB_PATH:-/var/bdb}"
 BDB="${BDB_BIN:-/bin/bdb}"
 APP_DIRS="${APPREG_DIRS:-/usr/share/applications:/usr/local/share/applications}"
+STATE_ROOT="${ALTITUDE_PKG_STATE:-/var/lib/altitude/packages}"
 
 die() { echo "appreg: $*" >&2; exit 1; }
 
@@ -14,6 +15,7 @@ usage: appreg <command> [args]
 
   refresh             scan .desktop files into app_registry
   list                list registered graphical applications
+  status              summarize app registry and package links
   search TERM         search registered applications
   info APP_ID         show one registered application
   launch APP_ID       run the registered Exec command
@@ -59,7 +61,7 @@ desktop_id() {
 
 package_for_desktop() {
   local file="$1" state paths
-  for state in /var/lib/altitude/packages/*; do
+  for state in "$STATE_ROOT"/*; do
     [ -d "$state" ] || continue
     paths="$state/paths"
     [ -f "$paths" ] || continue
@@ -129,6 +131,29 @@ cmd_list() {
     }'
 }
 
+cmd_status() {
+  ensure_table
+  "$BDB" dump app_registry 2>/dev/null | tail -n +2 |
+    awk -F '\t' '
+      BEGIN {
+        printf "%-14s %s\n", "KEY", "VALUE"
+      }
+      {
+        total++
+        if ($8 == "true") visible++
+        else hidden++
+        if ($6 != "") packaged++
+        else unpackaged++
+      }
+      END {
+        printf "%-14s %d\n", "total", total + 0
+        printf "%-14s %d\n", "visible", visible + 0
+        printf "%-14s %d\n", "hidden", hidden + 0
+        printf "%-14s %d\n", "packaged", packaged + 0
+        printf "%-14s %d\n", "unpackaged", unpackaged + 0
+      }'
+}
+
 cmd_search() {
   local term="${1:-}"
   ensure_table
@@ -173,6 +198,7 @@ shift || true
 case "$command" in
   refresh) cmd_refresh "$@" ;;
   list) cmd_list "$@" ;;
+  status) cmd_status "$@" ;;
   search) cmd_search "$@" ;;
   info) cmd_info "$@" ;;
   launch) cmd_launch "$@" ;;
