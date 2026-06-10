@@ -35,6 +35,7 @@ cleanup() {
   log "stopping GNOME session"
   killall gnome-shell 2>/dev/null || true
 }
+trap '' HUP
 trap cleanup TERM INT
 
 udevd_running() {

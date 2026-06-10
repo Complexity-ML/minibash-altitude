@@ -194,6 +194,22 @@ if [ -x /services/wifi.sh ] && ! pgrep -f '/services/wifi.sh' >/dev/null 2>&1; t
   setsid /services/wifi.sh >>/var/log/service-wifi-fallback.log 2>&1 &
 fi
 
+desktop_enabled=0
+[ "${ALTITUDE_AUTO_GRAPHICAL:-}" = "1" ] && desktop_enabled=1
+[ -e /etc/altitude/desktop.enabled ] && desktop_enabled=1
+if [ "$desktop_enabled" = "1" ]; then
+  if [ -x /services/graphical.sh ] && command -v gnome-shell >/dev/null 2>&1; then
+    if ! pgrep -x gnome-shell >/dev/null 2>&1 &&
+       ! pgrep -f '/services/graphical.sh' >/dev/null 2>&1; then
+      echo "[altitude] start graphical"
+      ALTITUDE_GRAPHICAL_VT="${ALTITUDE_GRAPHICAL_VT:-2}" \
+        nohup setsid /services/graphical.sh >>/var/log/service-graphical.log 2>&1 &
+    fi
+  else
+    echo "[altitude] graphical requested but GNOME runtime is missing"
+  fi
+fi
+
 echo "[altitude] native runtime ready"
 EOF
 chmod 755 "$PAYLOAD/etc/rc.altitude"
