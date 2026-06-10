@@ -10,6 +10,8 @@ bin/systemd-bridge
 bin/registry-audit
 bin/altitude-health
 bin/movectl
+bin/movectl-uinput
+bin/uiopen
 bin/altitude-software
 bin/altitude-control-center
 bin/altitude-command-runner

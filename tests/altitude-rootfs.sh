@@ -58,6 +58,8 @@ grep -q '^NAME="Altitude Linux"$' "$TMP/final-root/etc/os-release"
 [ -x "$TMP/final-root/bin/altitude-health" ]
 [ -x "$TMP/final-root/bin/systemd-bridge" ]
 [ -x "$TMP/final-root/bin/movectl" ]
+[ -x "$TMP/final-root/bin/movectl-uinput" ]
+[ -x "$TMP/final-root/bin/uiopen" ]
 [ -f "$TMP/final-root/usr/src/altitude/movectl.c" ]
 [ -x "$TMP/final-root/services/pkgd.sh" ]
 [ -f "$TMP/final-root/etc/systemd/system/altitude-health.timer" ]

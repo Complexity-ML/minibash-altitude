@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Registry-aware UI opener for Altitude desktop targets.
+#
+# Apps are launched through their normal Linux entrypoints. The registry records
+# where the operator asked to go and what command was used.
+set -u
+
+REG="${BDBREG_BIN:-/bin/bdbreg}"
+OWNER=uiopen
+
+usage() {
+  cat <<'EOF'
+usage:
+  uiopen TARGET
+  uiopen status
+  uiopen targets
+
+targets:
+  control-center
+  control-health
+  control-systemd-bridge
+  control-gpu
+  control-failures
+  software
+  terminal
+EOF
+}
+
+now() { date +%s 2>/dev/null || echo 0; }
+
+reg_set() {
+  local path="$1" type="$2" value="$3"
+  [ -x "$REG" ] || return 0
+  "$REG" set "$path" "$type" "$value" "$OWNER" >/dev/null 2>&1 || true
+}
+
+session_env() {
+  if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d /run/user/0 ]; then
+    export XDG_RUNTIME_DIR=/run/user/0
+  fi
+  if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/0}/wayland-0" ]; then
+    export WAYLAND_DISPLAY=wayland-0
+  fi
+  export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-GNOME}"
+  export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    local pid env
+    pid="$(pgrep -x gnome-shell 2>/dev/null | head -n 1 || true)"
+    if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
+      env="$(tr '\0' '\n' <"/proc/$pid/environ" |
+        sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)"
+      [ -n "$env" ] && export DBUS_SESSION_BUS_ADDRESS="$env"
+    fi
+  fi
+}
+
+record_open() {
+  local target="$1" command="$2" rc="$3"
+  reg_set /system/ui/open/target string "$target"
+  reg_set /system/ui/open/command string "$command"
+  reg_set /system/ui/open/rc int "$rc"
+  reg_set /system/ui/open/ok bool "$([ "$rc" = 0 ] && echo true || echo false)"
+  reg_set /system/ui/open/updated-at int "$(now)"
+}
+
+launch_bg() {
+  local target="$1" command="$2"
+  session_env
+  /bin/sh -lc "$command" >/tmp/uiopen-"$target".log 2>&1 &
+  local rc=$?
+  record_open "$target" "$command" "$rc"
+  return "$rc"
+}
+
+open_target() {
+  local target="$1"
+  case "$target" in
+    control-center)
+      launch_bg "$target" "/bin/altitude-control-center"
+      ;;
+    control-health)
+      launch_bg "$target" "/bin/altitude-control-center"
+      sleep 0.8
+      [ -x /bin/movectl ] && /bin/movectl click-target control-health >/dev/null 2>&1 || true
+      ;;
+    control-systemd-bridge)
+      launch_bg "$target" "/bin/altitude-control-center"
+      sleep 0.8
+      [ -x /bin/movectl ] && /bin/movectl click-target control-systemd-bridge >/dev/null 2>&1 || true
+      ;;
+    control-gpu)
+      launch_bg "$target" "/bin/altitude-control-center"
+      sleep 0.8
+      [ -x /bin/movectl ] && /bin/movectl click-target control-gpu >/dev/null 2>&1 || true
+      ;;
+    control-failures)
+      launch_bg "$target" "/bin/altitude-control-center"
+      sleep 0.8
+      [ -x /bin/movectl ] && /bin/movectl click-target control-failures >/dev/null 2>&1 || true
+      ;;
+    software)
+      launch_bg "$target" "/bin/altitude-software"
+      ;;
+    terminal)
+      launch_bg "$target" "/usr/bin/kgx"
+      ;;
+    *)
+      echo "uiopen: unknown target: $target" >&2
+      return 64
+      ;;
+  esac
+}
+
+case "${1:-help}" in
+  status)
+    [ -x "$REG" ] && "$REG" list /system/ui/open || echo "uiopen: registry unavailable"
+    ;;
+  targets)
+    printf '%s\n' control-center control-health control-systemd-bridge \
+      control-gpu control-failures software terminal
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    open_target "$1"
+    ;;
+esac
