@@ -4,6 +4,7 @@ set -euo pipefail
 
 export BDB_PATH="${BDB_PATH:-/var/bdb}"
 BDB="${BDB_BIN:-/bin/bdb}"
+WRITE_LOCK="${BDBREG_WRITE_LOCK:-/run/bdbreg-write.lock}"
 
 usage() {
   cat <<'EOF'
@@ -42,6 +43,29 @@ exists() {
     tail -n +2 | grep -q .
 }
 
+with_write_lock() {
+  local i pid retries
+  retries="${BDBREG_LOCK_RETRIES:-15}"
+  for i in $(seq 1 "$retries"); do
+    if mkdir "$WRITE_LOCK" 2>/dev/null; then
+      echo "$$" >"$WRITE_LOCK/pid" 2>/dev/null || true
+      trap 'rm -rf "$WRITE_LOCK" 2>/dev/null || true' EXIT INT TERM
+      "$@"
+      local status=$?
+      rm -rf "$WRITE_LOCK" 2>/dev/null || true
+      trap - EXIT INT TERM
+      return "$status"
+    fi
+    pid="$(cat "$WRITE_LOCK/pid" 2>/dev/null || true)"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$WRITE_LOCK" 2>/dev/null || true
+      continue
+    fi
+    sleep 1
+  done
+  die "registry write lock busy: $WRITE_LOCK"
+}
+
 cmd_list() {
   local prefix="${1:-/}"
   valid_path "$prefix" || die "chemin invalide: $prefix"
@@ -58,7 +82,7 @@ cmd_get() {
   "$BDB" select registry --where "path=$path"
 }
 
-cmd_set() {
+cmd_set_locked() {
   local path="${1:-}" type="${2:-}" value="${3-}" owner="${4:-operator}"
   valid_path "$path" || die "chemin invalide: $path"
   validate_value "$type" "$value" || die "valeur invalide pour le type $type"
@@ -74,11 +98,19 @@ cmd_set() {
   echo "bdbreg: set $path ($type)"
 }
 
-cmd_delete() {
+cmd_set() {
+  with_write_lock cmd_set_locked "$@"
+}
+
+cmd_delete_locked() {
   local path="${1:-}"
   valid_path "$path" || die "chemin invalide: $path"
   "$BDB" delete registry --where "path=$path" >/dev/null
   echo "bdbreg: deleted $path"
+}
+
+cmd_delete() {
+  with_write_lock cmd_delete_locked "$@"
 }
 
 command="${1:-help}"

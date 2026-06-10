@@ -48,6 +48,10 @@ ensure_table() {
 
 registry_set() {
   local path="$1" type="$2" value="$3" owner="${4:-registry-audit}" now
+  if [ -x /bin/bdbreg ]; then
+    /bin/bdbreg set "$path" "$type" "$value" "$owner" >/dev/null 2>&1 || true
+    return
+  fi
   now="$(date +%s 2>/dev/null || echo 0)"
   if "$BDB" dump registry 2>/dev/null | cut -f1 | grep -qx "$path"; then
     "$BDB" update registry --where "path=$path" type="$type" value="$value" \
@@ -68,15 +72,22 @@ with_audit_lock() {
     return
   fi
 
-  local i
-  for i in $(seq 1 30); do
+  local i pid retries
+  retries="${ALTITUDE_AUDIT_LOCK_RETRIES:-3}"
+  for i in $(seq 1 "$retries"); do
     if mkdir "$AUDIT_LOCK" 2>/dev/null; then
-      trap 'rmdir "$AUDIT_LOCK" 2>/dev/null || true' EXIT INT TERM
+      echo "$$" >"$AUDIT_LOCK/pid" 2>/dev/null || true
+      trap 'rm -rf "$AUDIT_LOCK" 2>/dev/null || true' EXIT INT TERM
       "$@"
       local status=$?
-      rmdir "$AUDIT_LOCK" 2>/dev/null || true
+      rm -rf "$AUDIT_LOCK" 2>/dev/null || true
       trap - EXIT INT TERM
       return "$status"
+    fi
+    pid="$(cat "$AUDIT_LOCK/pid" 2>/dev/null || true)"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+      rm -rf "$AUDIT_LOCK" 2>/dev/null || true
+      continue
     fi
     sleep 1
   done

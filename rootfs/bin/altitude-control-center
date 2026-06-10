@@ -44,17 +44,26 @@ app.connect('activate', application => {
     });
 
     const title = new Gtk.Label({
-        label: '<b>Altitude Control Center</b>\nBDB, services, network and package state.',
+        label: '<b>Altitude Control Center</b>\nHealth, Network, GNOME, systemd, packages and registry audit.',
         use_markup: true,
         xalign: 0,
     });
     root.append(title);
 
-    const buttons = new Gtk.Box({
-        orientation: Gtk.Orientation.HORIZONTAL,
-        spacing: 8,
+    const buttons = new Gtk.FlowBox({
+        selection_mode: Gtk.SelectionMode.NONE,
+        max_children_per_line: 5,
+        min_children_per_line: 2,
+        row_spacing: 8,
+        column_spacing: 8,
     });
-    root.append(buttons);
+    const buttonScroller = new Gtk.ScrolledWindow({
+        child: buttons,
+        hscrollbar_policy: Gtk.PolicyType.NEVER,
+        vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+        min_content_height: 92,
+    });
+    root.append(buttonScroller);
 
     const commandBar = new Gtk.Box({
         orientation: Gtk.Orientation.HORIZONTAL,
@@ -63,7 +72,7 @@ app.connect('activate', application => {
     root.append(commandBar);
 
     const commandEntry = new Gtk.Entry({
-        text: 'ip -4 -br a',
+        text: '/bin/altitude-health summary',
         placeholder_text: 'command to send to Altitude Command Runner',
         hexpand: true,
     });
@@ -91,7 +100,10 @@ app.connect('activate', application => {
     }
 
     function shell(script) {
-        return ['/bin/bash', '-lc', script];
+        const prelude =
+            'export PATH=/bin:/usr/bin:/sbin:/usr/sbin ALTITUDE_AUDIT_LOCK_RETRIES=1; ' +
+            't(){ local seconds="$1"; shift; if command -v timeout >/dev/null 2>&1; then timeout "$seconds" "$@"; else "$@"; fi; }; ';
+        return ['/bin/bash', '-lc', prelude + script];
     }
 
     function commandText() {
@@ -114,51 +126,81 @@ app.connect('activate', application => {
     }
 
     const actions = [
-        ['Overview', ['/bin/bash', '-lc', 'hostname; echo; cat /etc/os-release; echo; uname -a; echo; /bin/ip -4 -br a']],
-        ['Desktop', ['/bin/bash', '-lc',
-            'echo "== GNOME =="; ' +
-            'pgrep -a gnome-shell || true; ' +
-            'echo; systemctl status altitude-graphical.service altitude-rtkit.service --no-pager -l 2>&1 | sed -n "1,90p"; ' +
-            'echo; echo "== RealtimeKit =="; ' +
-            'pgrep -a rtkit-daemon || true; ' +
-            'busctl --system --no-pager list 2>/dev/null | grep -F org.freedesktop.RealtimeKit1 || true; ' +
-            'echo; echo "== Apps =="; ' +
-            '/bin/appreg refresh 2>&1; echo; /bin/appreg status 2>&1; echo; /bin/appreg list 2>&1'
-        ]],
-        ['Failures', ['/bin/bash', '-lc',
-            'echo "== systemd failed =="; systemctl --failed --no-pager 2>&1; ' +
-            'echo; echo "== recent graphical log =="; tail -80 /var/log/graphical.log 2>&1; ' +
-            'echo; echo "== recent GNOME shell log =="; tail -120 /var/log/gnome-shell.log 2>&1'
-        ]],
-        ['Services', ['/bin/bash', '-lc', '/bin/bdb select services 2>&1 || /bin/bdb dump services 2>&1']],
-        ['Modules', ['/bin/bash', '-lc', '/bin/bdb select modules 2>&1 || /bin/bdb dump modules 2>&1']],
-        ['Registry', ['/bin/bash', '-lc', '/bin/bdb select registry 2>&1 || /bin/bdb dump registry 2>&1']],
-        ['Audit', ['/bin/bash', '-lc', '/bin/registry-audit refresh 2>&1; echo; /bin/bdbreg list /system 2>&1']],
-        ['Systemd Bridge', ['/bin/bash', '-lc',
-            '/bin/systemd-bridge refresh 2>&1; ' +
-            'echo; echo "== failed units =="; /bin/systemd-bridge list 2>&1; ' +
-            'echo; echo "== bridge registry =="; /bin/bdbreg list /system/systemd/bridge 2>&1'
+        ['Overview', ['/bin/bash', '-lc',
+            'echo "== identity =="; hostname; cat /etc/os-release; echo; uname -a; ' +
+            'echo; echo "== health =="; /bin/altitude-health summary 2>&1; ' +
+            'echo; echo "== network =="; /bin/ip -4 -br a 2>&1; ' +
+            'echo; echo "== systemd =="; t 5 systemctl is-system-running 2>&1 || true; t 5 systemctl --failed --no-pager 2>&1'
         ]],
         ['Health', ['/bin/bash', '-lc',
             '/bin/altitude-health summary 2>&1; ' +
             'echo; echo "== registry =="; /bin/bdbreg list /system/health 2>&1; ' +
             'echo; echo "== health log =="; tail -80 /var/log/altitude-health.log 2>&1'
         ]],
-        ['Packages', ['/bin/bash', '-lc', '/bin/pkg list 2>&1 || find /usr/share/altitude/sources -type f -maxdepth 1 2>/dev/null | sort']],
-        ['Software', ['/bin/bash', '-lc', '/bin/pkg refresh 2>&1; echo; /bin/pkg search 2>&1 | sed -n "1,80p"']],
-        ['Apps', ['/bin/bash', '-lc', '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1']],
+        ['Network', ['/bin/bash', '-lc',
+            'echo "== address =="; /bin/ip -4 -br a 2>&1; ' +
+            'echo; echo "== route =="; ip route 2>&1 || true; ' +
+            'echo; echo "== wifi device =="; iw dev 2>&1 || true; ' +
+            'echo; echo "== iwlwifi module =="; lsmod 2>/dev/null | grep -E "^iwlwifi|^iwlmvm" || true; ' +
+            'echo; echo "== firmware / driver log =="; dmesg 2>/dev/null | grep -Ei "iwlwifi|firmware|wlan|wifi" | tail -80 || true; ' +
+            'echo; echo "== services =="; t 8 systemctl status altitude-netmgr.service altitude-wifi.service NetworkManager.service iwd.service wpa_supplicant.service --no-pager -l 2>&1 | sed -n "1,160p"'
+        ]],
+        ['Network Restart', ['/bin/bash', '-lc',
+            'echo "Restarting Altitude network services through systemd..."; ' +
+            't 12 /bin/systemd-bridge request restart altitude-netmgr.service 2>&1 || true; ' +
+            't 12 /bin/systemd-bridge request restart altitude-wifi.service 2>&1 || true; ' +
+            'sleep 2; echo; /bin/altitude-health summary 2>&1; echo; /bin/ip -4 -br a 2>&1; ' +
+            'echo; echo "== bridge registry =="; /bin/bdbreg list /system/systemd/bridge 2>&1'
+        ]],
+        ['GNOME', ['/bin/bash', '-lc',
+            'echo "== GNOME =="; ' +
+            'pgrep -a gnome-shell || true; ' +
+            'echo; t 8 systemctl status altitude-graphical.service altitude-rtkit.service --no-pager -l 2>&1 | sed -n "1,90p"; ' +
+            'echo; echo "== RealtimeKit =="; ' +
+            'pgrep -a rtkit-daemon || true; ' +
+            'busctl --system --no-pager list 2>/dev/null | grep -F org.freedesktop.RealtimeKit1 || true; ' +
+            'echo; echo "== Apps =="; ' +
+            '/bin/appreg refresh 2>&1; echo; /bin/appreg status 2>&1; echo; /bin/appreg list 2>&1'
+        ]],
+        ['GNOME Log', ['/bin/bash', '-lc', 'tail -180 /var/log/gnome-shell.log 2>&1']],
         ['GPU', ['/bin/bash', '-lc',
             '/bin/gpu 2>&1; ' +
-            'echo; echo "== GNOME compositor =="; ' +
-            'grep -Ei "hardware accelerated|shadow buffer|non-atomic|gbm renderer|nouveau|pmu|gsp" /var/log/gnome-shell.log 2>/dev/null || true'
+            'echo; echo "== compositor hints =="; ' +
+            'grep -Ei "hardware accelerated|shadow buffer|non-atomic|gbm renderer|nouveau|pmu|gsp|llvmpipe|software" /var/log/gnome-shell.log 2>/dev/null || true; ' +
+            'echo; echo "== dri =="; ls -l /dev/dri 2>&1 || true'
         ]],
+        ['Performance', ['/bin/bash', '-lc',
+            'echo "== pressure =="; cat /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io 2>/dev/null || true; ' +
+            'echo; echo "== memory =="; free -h 2>&1 || true; ' +
+            'echo; echo "== cpu top =="; ps -eo pid,comm,pcpu,pmem --sort=-pcpu 2>/dev/null | sed -n "1,16p"; ' +
+            'echo; echo "== gnome settings =="; gsettings get org.gnome.desktop.interface enable-animations 2>&1 || true'
+        ]],
+        ['Failures', ['/bin/bash', '-lc',
+            'echo "== systemd failed =="; t 5 systemctl --failed --no-pager 2>&1; ' +
+            'echo; echo "== recent graphical log =="; tail -80 /var/log/graphical.log 2>&1; ' +
+            'echo; echo "== recent GNOME shell log =="; tail -120 /var/log/gnome-shell.log 2>&1'
+        ]],
+        ['Systemd Bridge', ['/bin/bash', '-lc',
+            'echo "== system state =="; t 5 systemctl is-system-running 2>&1 || true; ' +
+            'echo; echo "== failed units =="; t 5 systemctl --failed --no-pager 2>&1; ' +
+            'echo; echo "== bridge registry =="; /bin/bdbreg list /system/systemd/bridge 2>&1'
+        ]],
+        ['Registry Audit', ['/bin/bash', '-lc',
+            'echo "== system registry snapshot =="; /bin/bdbreg list /system 2>&1; ' +
+            'echo; echo "== raw registry table =="; /bin/bdb select registry 2>&1 || /bin/bdb dump registry 2>&1'
+        ]],
+        ['Packages', ['/bin/bash', '-lc',
+            'echo "== configured repositories =="; cat /etc/altitude/repositories.conf 2>&1; ' +
+            'echo; echo "== installed =="; /bin/pkg list 2>&1; ' +
+            'echo; echo "== available/search =="; t 10 /bin/pkg refresh 2>&1 || true; echo; t 8 /bin/pkg search 2>&1 | sed -n "1,100p"'
+        ]],
+        ['Apps', ['/bin/bash', '-lc', '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1']],
         ['Terminal State', ['/bin/bash', '-lc',
             'echo "== terminal registry =="; /bin/bdbreg list /system/terminal 2>&1; ' +
             'echo; echo "== last output =="; cat /run/altitude-command-runner.last 2>/dev/null || true; ' +
             'echo; echo "== runner =="; pgrep -a -f "/bin/altitude-command-runner" || true'
         ]],
         ['Open Runner', ['/bin/bash', '-lc', '/bin/appreg launch altitude-command-runner >/tmp/altitude-command-runner.log 2>&1 & echo "Altitude Command Runner requested."']],
-        ['GNOME Log', ['/bin/bash', '-lc', 'tail -160 /var/log/gnome-shell.log 2>&1']],
     ];
 
     sendButton.connect('clicked', sendToTerminal);
@@ -167,7 +209,7 @@ app.connect('activate', application => {
     for (const [label, argv] of actions) {
         const button = new Gtk.Button({ label });
         button.connect('clicked', () => show(label, argv));
-        buttons.append(button);
+        buttons.insert(button, -1);
     }
 
     win.set_child(root);
