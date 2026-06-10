@@ -17,6 +17,9 @@ echo service > "$TMP/source/services/example.sh"
 ln -s /proc/mounts "$TMP/source/etc/mtab"
 
 bash "$ROOT/scripts/capture-altitude-system.sh" "$TMP/source" "$TMP/system"
+bash "$ROOT/scripts/build-altitude-firmware-package.sh" "$TMP/source" "$TMP/firmware-only"
+tar -tf "$TMP/firmware-only/altitude-firmware-0.1.0-all.altpkg" |
+  grep -q '^payload/usr/lib/firmware/example.bin$'
 ALTITUDE_PACKAGE_OUT="$TMP/custom" ALTITUDE_REPO_ROOT="$TMP/repository" \
   bash "$ROOT/scripts/build-altitude-packages.sh"
 for package in "$TMP/system"/*.altpkg; do
