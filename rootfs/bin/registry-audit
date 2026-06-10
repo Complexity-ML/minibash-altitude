@@ -86,10 +86,10 @@ with_audit_lock() {
 }
 
 first_global_ipv4() {
-  ip -4 addr show scope global 2>/dev/null |
+  ip -4 addr 2>/dev/null |
     awk '
       /^[0-9]+:/ { iface=$2; sub(/:$/, "", iface) }
-      / inet / { print iface " " $2; exit }
+      / inet / && iface != "lo" { print iface " " $2; exit }
     '
 }
 
