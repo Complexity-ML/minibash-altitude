@@ -46,9 +46,11 @@ ensure_ssh() {
 KD="/lib/modules/$(uname -r)"
 ins() {
   if [ -f "$KD/$1" ]; then
-    insmod "$KD/$1" 2>&1 &&
-      log "insmod $1 OK" ||
-      log "insmod $1 rc=$?"
+    local path="$1"
+    shift
+    insmod "$KD/$path" "$@" 2>&1 &&
+      log "insmod $path $* OK" ||
+      log "insmod $path $* rc=$?"
   else
     log "ABSENT $1"
   fi
@@ -70,8 +72,10 @@ ins kernel/net/rfkill/rfkill.ko
 ins kernel/net/wireless/cfg80211.ko
 ins kernel/lib/crypto/libarc4.ko
 ins kernel/net/mac80211/mac80211.ko
-ins kernel/drivers/net/wireless/intel/iwlwifi/iwlwifi.ko
-ins kernel/drivers/net/wireless/intel/iwlwifi/mvm/iwlmvm.ko
+ins kernel/drivers/net/wireless/intel/iwlwifi/iwlwifi.ko \
+  swcrypto=1 11n_disable=1 bt_coex_active=0 power_save=0
+ins kernel/drivers/net/wireless/intel/iwlwifi/mvm/iwlmvm.ko \
+  power_scheme=1
 modprobe iwlmvm 2>&1 || true
 
 # 2. clear any RF-kill soft block (a common cause of "failed to init interface")
