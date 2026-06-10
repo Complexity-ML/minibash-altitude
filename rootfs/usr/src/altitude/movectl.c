@@ -115,6 +115,19 @@ static unsigned short button_code(const char *name) {
   return BTN_LEFT;
 }
 
+static const char *button_name(unsigned short button) {
+  switch (button) {
+  case BTN_LEFT:
+    return "left";
+  case BTN_RIGHT:
+    return "right";
+  case BTN_MIDDLE:
+    return "middle";
+  default:
+    return "unknown";
+  }
+}
+
 static void do_click(int fd, unsigned short button) {
   if (emit_event(fd, EV_KEY, button, 1) < 0)
     die("emit button down");
@@ -131,6 +144,7 @@ static void run_daemon(void) {
   if (mkfifo(MOVECTL_FIFO, 0600) < 0)
     die("mkfifo " MOVECTL_FIFO);
   fprintf(stderr, "movectl: daemon ready on %s\n", MOVECTL_FIFO);
+  fflush(stderr);
 
   for (;;) {
     FILE *fifo = fopen(MOVECTL_FIFO, "r");
@@ -146,17 +160,35 @@ static void run_daemon(void) {
       int dx = 0, dy = 0, steps = 1;
       int n = sscanf(line, "%31s %d %d %d", cmd, &dx, &dy, &steps);
       if (n >= 1 && strcmp(cmd, "move") == 0 && n >= 3) {
+        fprintf(stderr, "movectl: command move dx=%d dy=%d steps=%d\n", dx, dy, steps);
+        fflush(stderr);
         do_move(fd, dx, dy, steps);
+        fprintf(stderr, "movectl: done move dx=%d dy=%d steps=%d\n", dx, dy, steps);
+        fflush(stderr);
       } else if (n >= 1 && strcmp(cmd, "nudge") == 0) {
+        fprintf(stderr, "movectl: command nudge dx=280 dy=0 steps=8\n");
+        fflush(stderr);
         do_move(fd, 280, 0, 8);
+        fprintf(stderr, "movectl: done nudge\n");
+        fflush(stderr);
       } else if (n >= 1 && strcmp(cmd, "click") == 0) {
         sscanf(line, "%31s %31s", cmd, arg);
-        do_click(fd, button_code(arg[0] ? arg : "left"));
+        unsigned short button = button_code(arg[0] ? arg : "left");
+        fprintf(stderr, "movectl: command click button=%s\n", button_name(button));
+        fflush(stderr);
+        do_click(fd, button);
+        fprintf(stderr, "movectl: done click button=%s\n", button_name(button));
+        fflush(stderr);
       } else if (n >= 1 && strcmp(cmd, "quit") == 0) {
+        fprintf(stderr, "movectl: command quit\n");
+        fflush(stderr);
         fclose(fifo);
         unlink(MOVECTL_FIFO);
         destroy_uinput(fd);
         return;
+      } else if (n >= 1) {
+        fprintf(stderr, "movectl: ignored command: %s", line);
+        fflush(stderr);
       }
     }
     fclose(fifo);
