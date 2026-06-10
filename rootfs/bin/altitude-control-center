@@ -21,6 +21,30 @@ function runCommand(argv) {
     }
 }
 
+function runCommandAsync(argv, callback) {
+    let proc;
+    try {
+        proc = new Gio.Subprocess({
+            argv,
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+        });
+        proc.init(null);
+    } catch (e) {
+        callback(`$ ${argv.join(' ')}\n\n${e.message}\n`);
+        return;
+    }
+
+    proc.communicate_utf8_async(null, null, (source, result) => {
+        try {
+            const [, stdout, stderr] = source.communicate_utf8_finish(result);
+            const status = source.get_exit_status();
+            callback(`$ ${argv.join(' ')}\n\n${stdout || ''}${stderr || ''}${status === 0 ? '' : `\nexit: ${status}\n`}`);
+        } catch (e) {
+            callback(`$ ${argv.join(' ')}\n\n${e.message}\n`);
+        }
+    });
+}
+
 const app = new Gtk.Application({
     application_id: 'org.altitude.ControlCenter',
     flags: Gio.ApplicationFlags.FLAGS_NONE,
@@ -96,7 +120,10 @@ app.connect('activate', application => {
     root.append(scroller);
 
     function show(label, argv) {
-        buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\n${runCommand(argv)}`, -1);
+        buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\nRunning...\n`, -1);
+        runCommandAsync(argv, output => {
+            buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\n${output}`, -1);
+        });
     }
 
     function shell(script) {
