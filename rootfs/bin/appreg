@@ -60,7 +60,7 @@ desktop_id() {
 }
 
 package_for_desktop() {
-  local file="$1" state paths
+  local file="$1" id state paths
   for state in "$STATE_ROOT"/*; do
     [ -d "$state" ] || continue
     paths="$state/paths"
@@ -71,6 +71,10 @@ package_for_desktop() {
       return 0
     fi
   done
+  id="$(desktop_id "$file")"
+  case "$id" in
+    altitude-*) echo altitude-core ;;
+  esac
 }
 
 upsert_app() {

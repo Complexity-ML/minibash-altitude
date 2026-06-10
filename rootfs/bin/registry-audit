@@ -135,6 +135,15 @@ cmd_refresh() {
     done < /etc/altitude/release.conf
   fi
 
+  if [ -r /etc/altitude/desktop-base.conf ]; then
+    while IFS='=' read -r key value; do
+      [ -n "${key:-}" ] || continue
+      case "$key" in \#*) continue ;; esac
+      key="$(printf '%s' "$key" | tr 'A-Z_' 'a-z-')"
+      registry_set "/system/desktop/base/$key" string "$value"
+    done < /etc/altitude/desktop-base.conf
+  fi
+
   local network iface addr route
   network="$(first_global_ipv4 || true)"
   iface="${network%% *}"

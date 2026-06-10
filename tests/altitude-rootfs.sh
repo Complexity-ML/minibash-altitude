@@ -25,6 +25,7 @@ for package in "$TMP/system"/*.altpkg; do
 done
 ALTITUDE_REPO_ROOT="$TMP/repository" \
   bash "$ROOT/rootfs/bin/altrepo" verify
+grep -q '^Package: altitude-desktop-base$' "$TMP/repository/INDEX"
 
 bash "$ROOT/scripts/assemble-altitude-rootfs.sh" "$TMP/repository" "$TMP/root" \
   altitude-base altitude-kernel altitude-firmware
@@ -47,10 +48,12 @@ done
 
 bash "$ROOT/scripts/assemble-altitude-rootfs.sh" "$TMP/repository" \
   "$TMP/final-root" altitude-base altitude-kernel altitude-firmware \
-  altitude-identity altitude-core altitude-services altitude-access
+  altitude-identity altitude-core altitude-services altitude-access \
+  altitude-desktop-base
 grep -q '^NAME="Altitude Linux"$' "$TMP/final-root/etc/os-release"
 [ -x "$TMP/final-root/bin/pkg" ]
 [ -x "$TMP/final-root/services/pkgd.sh" ]
 [ -f "$TMP/final-root/root/.ssh/authorized_keys" ]
+grep -q '^PROFILE=desktop$' "$TMP/final-root/etc/altitude/desktop-base.conf"
 
 echo "Altitude signed rootfs assembly: ok"

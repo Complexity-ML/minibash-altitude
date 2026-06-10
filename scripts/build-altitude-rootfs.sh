@@ -36,6 +36,7 @@ base_packages=(
 )
 
 desktop_packages=(
+  altitude-desktop-base
   altitude-python-build-runtime
   altitude-meson
   altitude-ninja

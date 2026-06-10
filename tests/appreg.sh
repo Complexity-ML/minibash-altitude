@@ -34,16 +34,25 @@ NoDisplay=true
 Categories=Utility;
 EOF
 
+cat > "$TMP/apps/altitude-tool.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Altitude Tool
+Exec=/bin/altitude-tool
+Categories=System;
+EOF
+
 cat > "$TMP/packages/altitude-demo/paths" <<EOF
 payload$TMP/apps/org.altitude.Demo.desktop
 EOF
 
-"$ROOT/rootfs/bin/appreg" refresh | grep -q 'indexed 2 applications'
-"$ROOT/rootfs/bin/appreg" status | grep -q 'visible[[:space:]]*1'
+"$ROOT/rootfs/bin/appreg" refresh | grep -q 'indexed 3 applications'
+"$ROOT/rootfs/bin/appreg" status | grep -q 'visible[[:space:]]*2'
 "$ROOT/rootfs/bin/appreg" status | grep -q 'hidden[[:space:]]*1'
-"$ROOT/rootfs/bin/appreg" status | grep -q 'packaged[[:space:]]*1'
+"$ROOT/rootfs/bin/appreg" status | grep -q 'packaged[[:space:]]*2'
 "$ROOT/rootfs/bin/appreg" search demo | grep -q 'Altitude Demo'
 "$ROOT/rootfs/bin/appreg" list | grep -q 'altitude-demo'
+"$ROOT/rootfs/bin/appreg" list | grep -q 'altitude-core'
 "$ROOT/rootfs/bin/appreg" info org.altitude.Demo | grep -q '/bin/demo'
 
 echo "Altitude app registry: ok"
