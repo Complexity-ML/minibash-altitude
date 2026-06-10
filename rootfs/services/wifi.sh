@@ -5,10 +5,10 @@
 set -u
 export PATH=/bin:/usr/bin:/sbin:/usr/sbin
 
-# Capture everything this service does (and a command trace) so a failed boot is
-# fully diagnosable from /var/log/wifi.log.
+# Capture everything this service does so a failed boot is diagnosable from
+# /var/log/wifi.log without flooding the console with shell traces by default.
 exec >>/var/log/wifi.log 2>&1
-set -x
+[ "${WIFI_DEBUG:-0}" = 1 ] && set -x
 
 IF="${WIFI_IF:-}"
 CONF=/etc/wpa_supplicant.conf
@@ -47,13 +47,32 @@ ensure_ssh() {
 #    the card binds and creates wlanN deterministically.
 #
 KD="/lib/modules/$(uname -r)"
+module_name_for_path() {
+  local path="$1" mod
+  mod="${path##*/}"
+  mod="${mod%.ko}"
+  printf '%s\n' "${mod//-/_}"
+}
+
 ins() {
   if [ -f "$KD/$1" ]; then
-    local path="$1"
+    local path="$1" mod rc
     shift
-    insmod "$KD/$path" "$@" 2>&1 &&
-      log "insmod $path $* OK" ||
-      log "insmod $path $* rc=$?"
+    mod="$(module_name_for_path "$path")"
+    if grep -qw "$mod" /proc/modules 2>/dev/null; then
+      log "module $mod already loaded"
+      return 0
+    fi
+    if insmod "$KD/$path" "$@" 2>&1; then
+      log "insmod $path $* OK"
+    else
+      rc=$?
+      if grep -qw "$mod" /proc/modules 2>/dev/null; then
+        log "module $mod present after insmod"
+      else
+        log "insmod $path $* rc=$rc"
+      fi
+    fi
   else
     log "ABSENT $1"
   fi
