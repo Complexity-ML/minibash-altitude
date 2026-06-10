@@ -9,6 +9,7 @@ bin/systemd-audit
 bin/systemd-bridge
 bin/registry-audit
 bin/altitude-health
+bin/movectl
 bin/altitude-software
 bin/altitude-control-center
 bin/altitude-command-runner
@@ -17,4 +18,5 @@ bin/altpkg-build
 bin/altrepo
 etc/minibash/system.conf
 etc/altitude/repositories.conf
+usr/src/altitude/movectl.c
 usr/share/applications
