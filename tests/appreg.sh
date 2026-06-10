@@ -55,4 +55,9 @@ EOF
 "$ROOT/rootfs/bin/appreg" list | grep -q 'altitude-core'
 "$ROOT/rootfs/bin/appreg" info org.altitude.Demo | grep -q '/bin/demo'
 
+rm -f "$TMP/apps/org.altitude.Hidden.desktop"
+"$ROOT/rootfs/bin/appreg" refresh | grep -q 'indexed 2 applications'
+"$ROOT/rootfs/bin/appreg" status | grep -q 'total[[:space:]]*2'
+"$ROOT/rootfs/bin/appreg" status | grep -q 'hidden[[:space:]]*0'
+
 echo "Altitude app registry: ok"

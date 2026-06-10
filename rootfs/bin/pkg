@@ -9,6 +9,23 @@ ROOT="${ALTITUDE_ROOT:-/}"
 export BDB_PATH
 
 die() { echo "pkg: $*" >&2; exit 1; }
+bb() {
+  if [ -x /bin/busybox ]; then
+    /bin/busybox "$@"
+  else
+    command "$@"
+  fi
+}
+cp() { bb cp "$@"; }
+mkdir() { bb mkdir "$@"; }
+rm() { bb rm "$@"; }
+mv() { bb mv "$@"; }
+ln() { bb ln "$@"; }
+chmod() { bb chmod "$@"; }
+chown() { bb chown "$@"; }
+dirname() { bb dirname "$@"; }
+id() { bb id "$@"; }
+tar() { bb tar "$@"; }
 safe_link() {
   local rel="$1" target="$2" parent path part depth=0
   case "$target" in /*) return 0 ;; esac
@@ -48,6 +65,23 @@ Altitude packages are installed from signed repositories configured in
 USAGE
 }
 sha256_file() { sha256sum "$1" | awk '{print $1}'; }
+path_owner() {
+  local rel="$1" state paths
+  for state in "$STATE_ROOT"/*; do
+    [ -d "$state" ] || continue
+    paths="$state/paths"
+    [ -f "$paths" ] || continue
+    if grep -qx "payload/${rel#/}" "$paths" 2>/dev/null; then
+      basename "$state"
+      return 0
+    fi
+  done
+}
+owned_by_other_package() {
+  local rel="$1" package="$2" owner
+  owner="$(path_owner "$rel")"
+  [ -n "$owner" ] && [ "$owner" != "$package" ]
+}
 package_record() {
   local name="$1" version="$2" state="$3" source="$4" checksum="$5" description="$6"
   if "$BDB_BIN" select packages --where "name=$name" | tail -n +2 | grep -q .; then
@@ -143,7 +177,7 @@ install_file() {
   validate_archive "$archive"
   [ -z "$trusted_key" ] || verify_signature "$archive" "$signature" "$trusted_key"
 
-  local tmp manifest name version arch description checksum state backup file rel expected got
+  local tmp manifest name version arch description checksum state backup file rel expected got busybox_payload
   tmp="$(mktemp -d)"
   backup="$tmp/backup"
   trap 'rm -rf "$tmp"' RETURN
@@ -190,6 +224,12 @@ install_file() {
 
   mkdir -p "$STATE_ROOT" "$backup"
   state="$STATE_ROOT/$name"
+  while IFS= read -r rel; do
+    [ ! -d "$tmp/$rel" ] || continue
+    rel="${rel#payload/}"
+    [ -e "$ROOT/$rel" ] || [ -L "$ROOT/$rel" ] || continue
+    owned_by_other_package "$rel" "$name" && die "path conflict: /$rel"
+  done < "$tmp/ALTITUDE/paths"
   if [ -f "$manifest" ]; then
     while read -r expected rel; do
       rel="${rel#payload/}"
@@ -208,20 +248,35 @@ install_file() {
         rel="${path#payload/}"
         source="$tmp/$path"
         destination="$ROOT/$rel"
+        if [ "$rel" = bin/busybox ]; then
+          busybox_payload="$source"
+          continue
+        fi
         if [ -L "$source" ]; then
           mkdir -p "$(dirname "$destination")"
-          [ ! -e "$destination" ] || [ -L "$destination" ] ||
-            die "path conflict: /$rel"
+          if [ -e "$destination" ] && [ ! -L "$destination" ]; then
+            owned_by_other_package "$rel" "$name" && die "path conflict: /$rel"
+            rm -rf "$destination"
+          fi
           rm -f "$destination"
           cp -a "$source" "$destination"
         elif [ -d "$source" ]; then
           mkdir -p "$destination"
         elif [ -f "$source" ]; then
           mkdir -p "$(dirname "$destination")"
-          [ ! -L "$destination" ] || rm -f "$destination"
+          if [ -L "$destination" ] || [ -d "$destination" ]; then
+            owned_by_other_package "$rel" "$name" && die "path conflict: /$rel"
+            rm -rf "$destination"
+          fi
           cp -a "$source" "$destination"
         fi
       done < "$tmp/ALTITUDE/paths"
+      if [ -n "${busybox_payload:-}" ]; then
+        mkdir -p "$ROOT/bin"
+        cp -a "$busybox_payload" "$ROOT/bin/busybox.pkg-new"
+        chmod 755 "$ROOT/bin/busybox.pkg-new"
+        mv -f "$ROOT/bin/busybox.pkg-new" "$ROOT/bin/busybox"
+      fi
     fi
     if [ "$(id -u)" -eq 0 ]; then
       while IFS= read -r rel; do

@@ -36,9 +36,31 @@ ensure_bdb() {
 
 have_table() { ensure_bdb; "$BDB" tables 2>/dev/null | grep -qx app_registry; }
 
+bdb_retry() {
+  local err rc
+  err="$(mktemp)"
+  for _ in $(seq 1 "${APPREG_BDB_RETRIES:-150}"); do
+    if "$BDB" "$@" 2>"$err"; then
+      rm -f "$err"
+      return 0
+    fi
+    rc=$?
+    if grep -q 'verrou occupe' "$err"; then
+      sleep 0.2
+      continue
+    fi
+    cat "$err" >&2
+    rm -f "$err"
+    return "$rc"
+  done
+  cat "$err" >&2
+  rm -f "$err"
+  return 1
+}
+
 ensure_table() {
   have_table && return 0
-  "$BDB" create app_registry id:text:pk name:text exec:text desktop:text \
+  bdb_retry create app_registry id:text:pk name:text exec:text desktop:text \
     categories:text package:text installed:bool visible:bool description:text \
     >/dev/null
 }
@@ -80,24 +102,20 @@ package_for_desktop() {
 upsert_app() {
   local id="$1" name="$2" exec="$3" desktop="$4" categories="$5" package="$6" visible="$7" description="$8"
   if "$BDB" select app_registry --where "id=$id" 2>/dev/null | tail -n +2 | grep -q .; then
-    "$BDB" update app_registry --where "id=$id" name="$name" exec="$exec" \
+    bdb_retry update app_registry --where "id=$id" name="$name" exec="$exec" \
       desktop="$desktop" categories="$categories" package="$package" installed=true \
       visible="$visible" description="$description" >/dev/null
   else
-    "$BDB" insert app_registry id="$id" name="$name" exec="$exec" \
+    bdb_retry insert app_registry id="$id" name="$name" exec="$exec" \
       desktop="$desktop" categories="$categories" package="$package" installed=true \
       visible="$visible" description="$description" >/dev/null
   fi
 }
 
 cmd_refresh() {
-  local dir file id type name exec no_display hidden categories package description visible count=0 list
+  local dir file id type name exec no_display hidden categories package description visible count=0 list seen
   ensure_table
-  "$BDB" dump app_registry 2>/dev/null | tail -n +2 | cut -f1 |
-    while IFS= read -r old_id; do
-      [ -n "$old_id" ] || continue
-      "$BDB" delete app_registry --where "id=$old_id" >/dev/null 2>&1 || true
-    done
+  seen="$(mktemp)"
   IFS=: read -r -a dirs <<< "$APP_DIRS"
   for dir in "${dirs[@]}"; do
     [ -d "$dir" ] || continue
@@ -119,10 +137,19 @@ cmd_refresh() {
       visible=true
       [ "$no_display" = true ] && visible=false
       upsert_app "$id" "$name" "$exec" "$file" "$categories" "$package" "$visible" "$description"
+      printf '%s\n' "$id" >> "$seen"
       count=$((count + 1))
     done < "$list"
     rm -f "$list"
   done
+  sort -u "$seen" -o "$seen"
+  "$BDB" dump app_registry 2>/dev/null | tail -n +2 | cut -f1 |
+    while IFS= read -r old_id; do
+      [ -n "$old_id" ] || continue
+      grep -qxF "$old_id" "$seen" && continue
+      bdb_retry delete app_registry --where "id=$old_id" >/dev/null 2>&1 || true
+    done
+  rm -f "$seen"
   echo "appreg: indexed $count applications"
 }
 

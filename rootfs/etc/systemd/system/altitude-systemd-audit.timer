@@ -2,9 +2,9 @@
 Description=Refresh Altitude systemd audit table
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=30s
-AccuracySec=5s
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=30s
 Unit=altitude-systemd-audit.service
 
 [Install]

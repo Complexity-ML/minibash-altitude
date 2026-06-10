@@ -57,6 +57,9 @@ BDB_BIN="$TMP/bdbc" BDB_PATH="$TMP/db" ALTITUDE_ROOT="$TMP/root" \
   bash "$ROOT/rootfs/bin/pkg" verify altitude-test
 BDB_BIN="$TMP/bdbc" BDB_PATH="$TMP/db" ALTITUDE_ROOT="$TMP/root" \
   ALTITUDE_PKG_STATE="$TMP/state" ALTITUDE_REPO_CONF="$TMP/etc/repositories.conf" \
+  bash "$ROOT/rootfs/bin/pkg" install-file "$TMP/altitude-test-1.0.0-all.altpkg" >/dev/null
+BDB_BIN="$TMP/bdbc" BDB_PATH="$TMP/db" ALTITUDE_ROOT="$TMP/root" \
+  ALTITUDE_PKG_STATE="$TMP/state" ALTITUDE_REPO_CONF="$TMP/etc/repositories.conf" \
   bash "$ROOT/rootfs/bin/pkg" refresh >/dev/null
 BDB_BIN="$TMP/bdbc" BDB_PATH="$TMP/db" ALTITUDE_ROOT="$TMP/root" \
   ALTITUDE_PKG_STATE="$TMP/state" ALTITUDE_REPO_CONF="$TMP/etc/repositories.conf" \

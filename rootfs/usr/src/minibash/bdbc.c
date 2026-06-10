@@ -496,8 +496,12 @@ static void lock_db(void) {
   char *lock = xasprintf("%s/.lock", db_dir());
   char *owner = xasprintf("%s/owner", lock);
   char boot_id[64];
+  const char *timeout_env = getenv("BDB_LOCK_TIMEOUT_MS");
+  long timeout_ms = timeout_env && *timeout_env ? strtol(timeout_env, NULL, 10) : 30000;
+  if (timeout_ms < 100) timeout_ms = 100;
+  int attempts = (int)((timeout_ms + 99) / 100);
   read_boot_id(boot_id, sizeof(boot_id));
-  for (int i = 0; i < 50; i++) {
+  for (int i = 0; i < attempts; i++) {
     if (mkdir(lock, 0755) == 0) {
       FILE *f = fopen(owner, "w");
       if (!f) die("open lock owner: %s", strerror(errno));
