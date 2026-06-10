@@ -137,6 +137,11 @@ app.connect('activate', application => {
         ['Packages', ['/bin/bash', '-lc', '/bin/pkg list 2>&1 || find /usr/share/altitude/sources -type f -maxdepth 1 2>/dev/null | sort']],
         ['Software', ['/bin/bash', '-lc', '/bin/pkg refresh 2>&1; echo; /bin/pkg search 2>&1 | sed -n "1,80p"']],
         ['Apps', ['/bin/bash', '-lc', '/bin/appreg refresh 2>&1; echo; /bin/appreg list 2>&1']],
+        ['GPU', ['/bin/bash', '-lc',
+            '/bin/gpu 2>&1; ' +
+            'echo; echo "== GNOME compositor =="; ' +
+            'grep -Ei "hardware accelerated|shadow buffer|non-atomic|gbm renderer|nouveau|pmu|gsp" /var/log/gnome-shell.log 2>/dev/null || true'
+        ]],
         ['Terminal State', ['/bin/bash', '-lc',
             'echo "== terminal registry =="; /bin/bdbreg list /system/terminal 2>&1; ' +
             'echo; echo "== last output =="; cat /run/altitude-command-runner.last 2>/dev/null || true; ' +

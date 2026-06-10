@@ -12,7 +12,7 @@ AUDIT_LOCK="${ALTITUDE_AUDIT_LOCK:-/run/altitude-audit.lock}"
 
 usage() {
   cat <<'EOF'
-usage: registry-audit [refresh|summary|list]
+usage: registry-audit [refresh|gpu|summary|list]
 
 Refreshes observed system facts into the typed BDB registry:
   /system/product
@@ -112,6 +112,7 @@ pressure_avg10() {
 
 audit_gpu() {
   local card="${1:-/dev/dri/card0}" sys_card driver vendor device render shadow accelerated atomic
+  local tu116_required tu116_present tu116_missing gsp_missing pmu_unavailable health
   sys_card="/sys/class/drm/$(basename "$card")"
   driver=none
   if [ -e "$sys_card/device/driver/module" ]; then
@@ -125,6 +126,31 @@ audit_gpu() {
   grep -q 'Not hardware accelerated' /var/log/gnome-shell.log 2>/dev/null && accelerated=false
   atomic=true
   grep -q 'non-atomic mode setting' /var/log/gnome-shell.log 2>/dev/null && atomic=false
+  pmu_unavailable=false
+  if dmesg 2>/dev/null | grep -q 'nouveau.*pmu: firmware unavailable'; then
+    pmu_unavailable=true
+  fi
+  tu116_required=0
+  tu116_present=0
+  tu116_missing=0
+  gsp_missing=0
+  if command -v modinfo >/dev/null 2>&1; then
+    while IFS= read -r fw; do
+      [ -n "$fw" ] || continue
+      tu116_required=$((tu116_required + 1))
+      if [ -s "/usr/lib/firmware/$fw" ] || [ -s "/lib/firmware/$fw" ]; then
+        tu116_present=$((tu116_present + 1))
+      else
+        tu116_missing=$((tu116_missing + 1))
+        case "$fw" in */gsp/*) gsp_missing=$((gsp_missing + 1)) ;; esac
+      fi
+    done <<EOF_FW
+$(modinfo nouveau 2>/dev/null | awk '/^firmware:/ {print $2}' | grep '^nvidia/tu116/' || true)
+EOF_FW
+  fi
+  health=ok
+  [ "$accelerated" = false ] && health=degraded
+  [ "$pmu_unavailable" = true ] && health=nouveau-pmu-missing
 
   registry_set /system/desktop/gpu/card string "$card"
   registry_set /system/desktop/gpu/driver string "$driver"
@@ -134,6 +160,12 @@ audit_gpu() {
   registry_set /system/desktop/gpu/hardware-accelerated bool "$accelerated"
   registry_set /system/desktop/gpu/shadow-buffer bool "$shadow"
   registry_set /system/desktop/gpu/atomic-modeset bool "$atomic"
+  registry_set /system/desktop/gpu/pmu-firmware bool "$([ "$pmu_unavailable" = true ] && echo false || echo true)"
+  registry_set /system/desktop/gpu/tu116-firmware-required int "$tu116_required"
+  registry_set /system/desktop/gpu/tu116-firmware-present int "$tu116_present"
+  registry_set /system/desktop/gpu/tu116-firmware-missing int "$tu116_missing"
+  registry_set /system/desktop/gpu/tu116-gsp-missing int "$gsp_missing"
+  registry_set /system/desktop/gpu/health string "$health"
 }
 
 audit_pressure() {
@@ -232,6 +264,13 @@ cmd_refresh() {
   echo "registry-audit: refreshed system facts"
 }
 
+cmd_gpu() {
+  ensure_table
+  audit_gpu /dev/dri/card0
+  audit_pressure
+  echo "registry-audit: refreshed gpu facts"
+}
+
 cmd_list() {
   ensure_table
   /bin/bdbreg list /system
@@ -255,6 +294,7 @@ cmd_summary() {
 command="${1:-refresh}"
 case "$command" in
   refresh) with_audit_lock cmd_refresh ;;
+  gpu) with_audit_lock cmd_gpu ;;
   list) cmd_list ;;
   summary) cmd_summary ;;
   help|-h|--help) usage ;;

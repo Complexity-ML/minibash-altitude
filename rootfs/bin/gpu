@@ -1,9 +1,33 @@
 #!/usr/bin/env bash
 set -u
 
+if [ "${1:-}" = refresh ]; then
+  /bin/registry-audit gpu >/dev/null 2>&1 || true
+fi
+
 echo "== devices =="
 ls -l /dev/dri 2>/dev/null || echo "no /dev/dri"
 ls -l /dev/fb* 2>/dev/null || echo "no /dev/fb"
+
+echo
+echo "== registry =="
+/bin/bdbreg list /system/desktop/gpu 2>/dev/null || echo "no gpu registry"
+
+echo
+echo "== tu116 firmware =="
+if command -v modinfo >/dev/null 2>&1; then
+  modinfo nouveau 2>/dev/null | awk '/^firmware:/ {print $2}' |
+    grep '^nvidia/tu116/' |
+    while IFS= read -r fw; do
+      if [ -s "/usr/lib/firmware/$fw" ] || [ -s "/lib/firmware/$fw" ]; then
+        printf 'ok      %s\n' "$fw"
+      else
+        printf 'missing %s\n' "$fw"
+      fi
+    done
+else
+  echo "modinfo unavailable"
+fi
 
 echo
 echo "== modules =="
@@ -11,7 +35,7 @@ grep -E '(^drm|^drm_kms_helper|^i915|^amdgpu|^nouveau|^simpledrm)' /proc/modules
 
 echo
 echo "== kernel log =="
-dmesg 2>/dev/null | grep -Ei 'drm|i915|amdgpu|nouveau|simpledrm|fb0|firmware' || echo "no gpu log lines"
+dmesg 2>/dev/null | grep -Ei 'drm|i915|amdgpu|nouveau|simpledrm|fb0|firmware|gsp|pmu' || echo "no gpu log lines"
 
 echo
 echo "== weston =="
