@@ -39,6 +39,13 @@ ensure_table() {
     have_table registry
 }
 
+reset_systemd_audit_table() {
+  "$BDB" drop systemd_audit >/dev/null 2>&1 || true
+  "$BDB" create systemd_audit unit:text:pk load:text active:text sub:text \
+    description:text updated_at:int >/dev/null 2>&1 ||
+    have_table systemd_audit
+}
+
 registry_set() {
   local path="$1" type="$2" value="$3" owner="${4:-systemd-audit}" now
   now="$(date +%s 2>/dev/null || echo 0)"
@@ -123,6 +130,7 @@ cmd_refresh() {
     return 0
   }
   audit_counts
+  reset_systemd_audit_table
   local now count=0
   now="$(date +%s 2>/dev/null || echo 0)"
   systemctl list-units --failed --no-legend --no-pager 2>/dev/null |
