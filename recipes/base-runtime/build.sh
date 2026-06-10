@@ -86,14 +86,19 @@ log "PID1 start $(date 2>/dev/null || true)"
 log "cmdline: $(cat /proc/cmdline 2>/dev/null)"
 log "root: ${root_line:-unknown}"
 
-case " $(cat /proc/cmdline 2>/dev/null) " in
-  *" altitude.init=systemd "*)
+cmdline=" $(cat /proc/cmdline 2>/dev/null) "
+case "$cmdline" in
+  *" altitude.init=busybox "*) log "busybox fallback forced by cmdline" ;;
+  *)
+    if printf '%s' "$cmdline" | grep -q ' altitude.init=systemd ' ||
+       [ -e /etc/altitude/systemd.enabled ]; then
     if [ -x /usr/lib/systemd/systemd ]; then
       log "exec systemd PID1"
       exec /usr/lib/systemd/systemd
       log "systemd exec failed rc=$?"
     else
       log "systemd requested but /usr/lib/systemd/systemd is missing; using BusyBox fallback"
+    fi
     fi
     ;;
 esac
