@@ -15,6 +15,7 @@ usage:
   movectl move DX DY [STEPS]
   movectl click [left]
   movectl nudge
+  movectl home
   movectl goto TARGET
   movectl click-target TARGET
   movectl status
@@ -54,11 +55,11 @@ record_delta() {
 
 target_delta() {
   case "$1" in
-    control-overview)        echo "-240 -180 12" ;;
-    control-failures)        echo "-60 -180 12" ;;
-    control-systemd-bridge)  echo "350 -180 14" ;;
-    control-health)          echo "520 -180 16" ;;
-    control-gpu)             echo "260 -80 12" ;;
+    control-overview)        echo "80 150 10" ;;
+    control-failures)        echo "250 150 12" ;;
+    control-systemd-bridge)  echo "650 150 16" ;;
+    control-health)          echo "830 150 18" ;;
+    control-gpu)             echo "1180 150 20" ;;
     *) return 1 ;;
   esac
 }
@@ -95,6 +96,11 @@ case "$cmd" in
     run_uinput nudge
     record_delta 280 0
     ;;
+  home)
+    run_uinput move -5000 -5000 40
+    record_action home "top-left"
+    reg_set /system/input/pointer/origin string top-left
+    ;;
   goto)
     [ "$#" -eq 1 ] || { usage >&2; exit 64; }
     target="$1"
@@ -106,6 +112,8 @@ case "$cmd" in
     dx="$1"
     dy="$2"
     steps="$3"
+    "$0" home
+    sleep 0.1
     run_uinput move "$dx" "$dy" "$steps"
     record_action goto "$target dx=$dx dy=$dy steps=$steps"
     reg_set /system/input/pointer/target string "$target"
