@@ -25,7 +25,6 @@ if ! have_table modules; then
   # crypto -- mandatory for the WPA CCMP/PMF key install (THE multi-day bug)
   add ccm         "" crypto "CCM(AES) - cle CCMP WPA (sans lui: handshake KO)"
   add aesni_intel "" crypto "AES accelere Intel"
-  add ctr         "" crypto "CTR"
   add gcm         "" crypto "GCM"
   add cmac        "" crypto "CMAC - PMF/BIP (WPA3)"
   # 802.11 stack + drivers
@@ -49,11 +48,22 @@ ensure_module() {
 ensure_module crypto_user    "" crypto "AF_ALG userspace crypto"
 ensure_module algif_hash     "" crypto "AF_ALG hash interface"
 ensure_module algif_skcipher "" crypto "AF_ALG symmetric cipher interface"
-ensure_module ecb            "" crypto "ECB cipher mode"
-ensure_module cbc            "" crypto "CBC cipher mode"
-ensure_module md5            "" crypto "MD5 for iwd compatibility"
 ensure_module des_generic    "" crypto "DES compatibility"
-ensure_module hmac           "" crypto "HMAC for WPA authentication"
+mark_builtin_module() {
+  name="$1"; description="$2"
+  if $BDB dump modules 2>/dev/null | cut -f1 | grep -qx "$name"; then
+    $BDB update modules --where "name=$name" autoload=false status=builtin \
+      description="$description" >/dev/null
+  else
+    $BDB insert modules name="$name" params="" stage=crypto autoload=false \
+      status=builtin description="$description" >/dev/null
+  fi
+}
+mark_builtin_module ctr  "CTR cipher mode provided by aesni_intel/aes-lib"
+mark_builtin_module ecb  "ECB cipher mode provided by aesni_intel/aes-lib"
+mark_builtin_module cbc  "CBC cipher mode provided by aesni_intel/aes-lib"
+mark_builtin_module md5  "MD5 provided by md5-lib"
+mark_builtin_module hmac "HMAC provided by hash-specific lib drivers"
 
 # aes_generic disappeared as a loadable module on modern kernels; AES is
 # provided by aesni_intel/aes-lib. Disable the legacy row on upgraded systems.
