@@ -14,6 +14,8 @@ IF="${WIFI_IF:-}"
 CONF=/etc/wpa_supplicant.conf
 DHCP_SCRIPT=/usr/share/udhcpc/default.script
 [ -f /etc/minibash/wifi.creds ] && . /etc/minibash/wifi.creds
+WPA_CMD="wpa_supplicant"
+WPA_COMPAT=/opt/altitude/wpa210
 
 log() { echo "wifi: $*"; }
 
@@ -110,7 +112,10 @@ iw dev "$IF" set power_save off 2>/dev/null || true
 sleep 1
 
 # 4. associate (retry: the interface may need a moment after coming up)
-if ! command -v wpa_supplicant >/dev/null 2>&1; then
+if [ -x "$WPA_COMPAT/ld-linux-x86-64.so.2" ] && [ -x "$WPA_COMPAT/bin/wpa_supplicant" ]; then
+  WPA_CMD="$WPA_COMPAT/ld-linux-x86-64.so.2 --library-path $WPA_COMPAT/lib $WPA_COMPAT/bin/wpa_supplicant"
+  log "using compat wpa_supplicant: $($WPA_COMPAT/ld-linux-x86-64.so.2 --library-path "$WPA_COMPAT/lib" "$WPA_COMPAT/bin/wpa_supplicant" -v 2>&1 | head -1)"
+elif ! command -v wpa_supplicant >/dev/null 2>&1; then
   log "wpa_supplicant missing"; while true; do sleep 60; done
 fi
 mkdir -p /run/wpa_supplicant
@@ -141,7 +146,7 @@ fi
 # way ALL of its output — driver init errors AND association events — is captured
 # in the log instead of being lost to syslog when it daemonises.
 log "starting wpa_supplicant on $IF (foreground, logged)"
-wpa_supplicant -i "$IF" -c "$CONF" -Dnl80211 -d -t >/var/log/wpa_supplicant.log 2>&1 &
+eval "$WPA_CMD" -i "$IF" -c "$CONF" -Dnl80211 -d -t >/var/log/wpa_supplicant.log 2>&1 &
 WPA_PID=$!
 sleep 6
 if ! kill -0 "$WPA_PID" 2>/dev/null; then
