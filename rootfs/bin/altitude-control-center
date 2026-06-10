@@ -134,9 +134,13 @@ app.connect('activate', application => {
             'echo; echo "== pressure =="; sed -n "1p" /proc/pressure/cpu 2>/dev/null; sed -n "1p" /proc/pressure/io 2>/dev/null'
         ]],
         ['Health', ['/bin/bash', '-lc',
-            '/bin/altitude-health summary 2>&1; ' +
-            'echo; echo "== registry =="; /bin/bdbreg list /system/health 2>&1; ' +
-            'echo; echo "== health log =="; tail -80 /var/log/altitude-health.log 2>&1'
+            'echo "== health snapshot =="; /bin/bdbreg list /system/health 2>&1; ' +
+            'echo; echo "== last health log =="; tail -30 /var/log/altitude-health.log 2>&1'
+        ]],
+        ['Refresh Health', ['/bin/bash', '-lc',
+            'echo "Refreshing health snapshot..."; ' +
+            't 12 /bin/altitude-health summary 2>&1 || echo "health refresh timed out or failed"; ' +
+            'echo; echo "== registry =="; /bin/bdbreg list /system/health 2>&1'
         ]],
         ['Network', ['/bin/bash', '-lc',
             'echo "== address =="; /bin/ip -4 -br a 2>&1; ' +
