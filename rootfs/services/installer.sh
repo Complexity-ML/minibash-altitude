@@ -4,4 +4,4 @@
 set -u
 
 echo "installer: available command: minibash-install --target /dev/DEVICE --yes"
-echo "installer: this service is intentionally desired=down by default"
+echo "installer: manual helper only; systemd owns lifecycle"

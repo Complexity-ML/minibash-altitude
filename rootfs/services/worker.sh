@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-shot job. restart=false, so minit marks it desired=down once it exits;
-# run it on demand with `bashsvc start worker`.
+# One-shot legacy helper kept for BusyBox fallback experiments. Normal service
+# lifecycle is owned by systemd units, not BDB rows.
 set -u
 
 echo "worker: background job online"

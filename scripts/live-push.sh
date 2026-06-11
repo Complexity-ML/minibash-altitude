@@ -3,7 +3,7 @@
 # minibash runs in RAM, so this hot-swaps userspace scripts with no reflash.
 #
 # Usage:
-#   scripts/live-push.sh root@<ip> rootfs/services/desktopd.sh desktopd
+#   scripts/live-push.sh root@<ip> rootfs/services/desktopd.sh altitude-graphical.service
 #   scripts/live-push.sh root@<ip> rootfs/etc/sway/...        # no restart
 #
 # (minit and the kernel are NOT hot-swappable: those still need a reflash.)
@@ -23,5 +23,5 @@ esac
 SSHOPTS="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
 scp $SSHOPTS "$SRC" "$HOST:$DEST"
-[ -n "$SVC" ] && ssh $SSHOPTS "$HOST" "bashsvc restart $SVC"
+[ -n "$SVC" ] && ssh $SSHOPTS "$HOST" "systemctl restart $SVC"
 echo "pushed $SRC -> $HOST:$DEST${SVC:+  (restarted $SVC)}"

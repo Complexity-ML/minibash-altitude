@@ -12,8 +12,8 @@ BDB=/bin/bdb
 
 have_table() { $BDB tables 2>/dev/null | grep -qx "$1"; }
 
-# --- modules: KERNEL MODULES, driven by the DB -----------------------------
-# This is the "kernel services via the database" piece. `ccm` + aes were THE
+# --- modules: kernel module inventory/reconciliation -----------------------
+# This is kernel module state, not service lifecycle control. `ccm` + aes were THE
 # missing modules that broke WiFi for days (mac80211 could not install the WPA
 # CCMP key). They now live in the database, not a hardcoded modprobe list, so
 # the failure is visible (status=failed) and the set is editable with `bdb`.

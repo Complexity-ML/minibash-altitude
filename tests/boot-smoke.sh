@@ -41,7 +41,7 @@ grep -q "/dev/vda at /var/bdb" "$log_file"
 grep -q "\\[bdbboot:rust\\] 13 services loaded from bdb" "$log_file"
 # the interactive console is opened promptly (getty-style)
 grep -q "\\[minit\\] opening console shell" "$log_file"
-# supervisor started the desired=up services
+# legacy BusyBox fallback supervisor started its built-in service list
 grep -q "\\[minit\\] start clock" "$log_file"
 grep -q "\\[minit\\] start web" "$log_file"
 grep -q "\\[minit\\] start metrics" "$log_file"
@@ -53,25 +53,25 @@ grep -q "\\[minit\\] start pkgd" "$log_file"
 grep -q "\\[minit\\] start updated" "$log_file"
 # login (autologin=root from the kernel cmdline) reached a shell session
 grep -q "Welcome to minibash-linux, root" "$log_file"
-# worker is desired=down and must NOT be auto-started
+# worker is a manual helper and must NOT be auto-started
 if grep -q "\\[minit\\] start worker" "$log_file"; then
   cat "$log_file"
-  echo "boot smoke failed: worker should not autostart (desired=down)" >&2
+  echo "boot smoke failed: worker should not autostart" >&2
   exit 1
 fi
 if grep -q "\\[minit\\] start installer" "$log_file"; then
   cat "$log_file"
-  echo "boot smoke failed: installer should not autostart (desired=down)" >&2
+  echo "boot smoke failed: installer should not autostart" >&2
   exit 1
 fi
 if grep -q "\\[minit\\] start sshd" "$log_file"; then
   cat "$log_file"
-  echo "boot smoke failed: sshd should not autostart (desired=down)" >&2
+  echo "boot smoke failed: sshd should not autostart" >&2
   exit 1
 fi
 if grep -q "\\[minit\\] start desktopd" "$log_file"; then
   cat "$log_file"
-  echo "boot smoke failed: desktopd should not autostart (desired=down)" >&2
+  echo "boot smoke failed: desktopd should not autostart" >&2
   exit 1
 fi
 

@@ -79,28 +79,10 @@ assignments_from_set() {
   done
 }
 
-poke_minit() {
-  kill -USR1 1 2>/dev/null || true
-}
-
-service_stmt() {
-  local verb="$1" svc="$2"
-  svc="$(trim "$svc")"
-  is_name "$svc" || die "service invalide: $svc"
-  case "$verb" in
-    START)   "$BDB" update services --where "name=$svc" desired=up ;;
-    STOP)    "$BDB" update services --where "name=$svc" desired=down ;;
-    ENABLE)  "$BDB" update services --where "name=$svc" autostart=true desired=up ;;
-    DISABLE) "$BDB" update services --where "name=$svc" autostart=false desired=down ;;
-    *) die "verbe service inconnu: $verb" ;;
-  esac
-  poke_minit
-}
-
 exec_query() {
   local query="$1"
   local table col val cols vals set_expr where_expr
-  local select_re insert_re update_re delete_re service_re
+  local select_re insert_re update_re delete_re
 
   query="$(normalize_query "$query")"
   [ -n "$query" ] || return 0
@@ -109,7 +91,6 @@ exec_query() {
   insert_re='^INSERT[[:space:]]+INTO[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*\(([^)]*)\)[[:space:]]+VALUES[[:space:]]*\((.*)\)$'
   update_re='^UPDATE[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]+SET[[:space:]]+(.+)[[:space:]]+WHERE[[:space:]]+(.+)$'
   delete_re='^DELETE[[:space:]]+FROM[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]+WHERE[[:space:]]+(.+)$'
-  service_re='^(START|STOP|ENABLE|DISABLE)[[:space:]]+SERVICE[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)$'
 
   shopt -s nocasematch
   if [[ "$query" == "SHOW TABLES" ]]; then
@@ -119,10 +100,6 @@ exec_query() {
     table="${BASH_REMATCH[2]}"
     shopt -u nocasematch
     "$BDB" schema "$table"
-  elif [[ "$query" =~ $service_re ]]; then
-    local verb="${BASH_REMATCH[1]^^}" svc="${BASH_REMATCH[2]}"
-    shopt -u nocasematch
-    service_stmt "$verb" "$svc"
   elif [[ "$query" =~ $select_re ]]; then
     table="${BASH_REMATCH[1]}"
     where_expr="${BASH_REMATCH[3]:-}"
@@ -153,9 +130,9 @@ exec_query() {
     "$BDB" delete "$table" --where "$(where_arg "$where_expr")"
   else
     shopt -u nocasematch
-    die "syntaxe supportee: SHOW TABLES, DESC, SELECT *, INSERT, UPDATE, DELETE, START/STOP/ENABLE/DISABLE SERVICE"
+    die "syntaxe supportee: SHOW TABLES, DESC, SELECT *, INSERT, UPDATE, DELETE"
   fi
 }
 
-[ $# -gt 0 ] || die 'usage: bdbql "SELECT * FROM services;"'
+[ $# -gt 0 ] || die 'usage: bdbql "SELECT * FROM registry;"'
 exec_query "$*"

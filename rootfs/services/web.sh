@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A real (tiny) HTTP server in Bash. One connection per accept via busybox nc;
-# the outer loop re-arms the listener. Serves live service status from bdb.
+# the outer loop re-arms the listener. Serves observed systemd audit state.
 set -u
 
 PORT="${WEB_PORT:-80}"
@@ -10,9 +10,16 @@ export BDB_PATH
 echo "web: http status server starting on 0.0.0.0:${PORT}"
 
 build_body() {
-  echo "Altitude Linux :: service status"
+  echo "Altitude Linux :: systemd audit"
   echo
-  /bin/bdb select services
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl is-system-running 2>/dev/null || true
+    systemctl --failed --no-pager 2>/dev/null || true
+  fi
+  if /bin/bdb tables 2>/dev/null | grep -qx systemd_audit; then
+    echo
+    /bin/bdb select systemd_audit
+  fi
   echo
   local up="0" host="altitude"
   if read -r up _ < /proc/uptime 2>/dev/null; then up="${up%.*}"; fi

@@ -1,5 +1,11 @@
 # minibash : un Linux piloté par une base de données
 
+> Archive de conception. Ce texte décrit l'ancien prototype minibash/hybride où
+> la BDB pouvait piloter le cycle de vie des services. Le contrat Altitude
+> actuel a changé: systemd est la source de vérité pour les services; la BDB
+> garde le registry, les paquets, l'inventaire et l'audit observé
+> (`systemd_audit`), sans démarrer/arrêter les unités.
+
 ## La thèse
 
 Linux classique = **« tout est fichier »**, éparpillé : `/etc/fstab`, `/etc/passwd`,

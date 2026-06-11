@@ -20,7 +20,7 @@ while true; do
     help|help\;)
       printf 'SHOW TABLES; DESC table; SELECT * FROM table [WHERE col=value];\n'
       printf 'INSERT INTO table (cols) VALUES (vals); UPDATE table SET col=value WHERE col=value;\n'
-      printf 'DELETE FROM table WHERE col=value; START/STOP/ENABLE/DISABLE SERVICE name;\n'
+      printf 'DELETE FROM table WHERE col=value;\n'
       continue
       ;;
   esac

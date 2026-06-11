@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Altitude Services
-Exec=/bin/minibash-services
-Icon=applications-system
-Terminal=false
-X-GNOME-Autostart-enabled=true
-OnlyShowIn=GNOME;Unity;XFCE;
-Categories=System;Settings;Utility;
