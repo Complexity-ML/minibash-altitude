@@ -88,8 +88,8 @@ with_audit_lock() {
     sleep 1
   done
 
-  echo "systemd-audit: audit lock busy: $AUDIT_LOCK" >&2
-  return 75
+  echo "systemd-audit: audit lock busy: $AUDIT_LOCK; skipped"
+  return 0
 }
 
 audit_runtime() {

@@ -6,3 +6,4 @@ Wants=altitude-seed.service
 [Service]
 Type=oneshot
 ExecStart=/bin/systemd-audit refresh
+TimeoutStartSec=30

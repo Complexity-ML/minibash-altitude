@@ -5,6 +5,11 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export LANG="${LANG:-C}"
 export LC_ALL="${LC_ALL:-$LANG}"
 export LANGUAGE="${LANGUAGE:-$LANG}"
+if command -v locale >/dev/null 2>&1 && ! locale -a 2>/dev/null | grep -qx "$LC_ALL"; then
+  export LANG=C
+  export LC_ALL=C
+  export LANGUAGE=C
+fi
 exec >>/var/log/graphical.log 2>&1
 
 VT="${ALTITUDE_GRAPHICAL_VT:-2}"
@@ -23,7 +28,8 @@ wait_bus_name() {
 
 start_if_missing() {
   local name="$1" proc="$2"; shift 2
-  if pgrep -x "$proc" >/dev/null 2>&1 && wait_bus_name "$name"; then
+  if pgrep -x "$proc" >/dev/null 2>&1; then
+    wait_bus_name "$name" || log "service $proc is running but $name is not visible yet"
     return 0
   fi
   if [ ! -x "$1" ]; then
@@ -54,7 +60,9 @@ for m in evdev mousedev hid usbhid hid_generic i2c_hid i2c_hid_acpi psmouse \
 done
 
 mkdir -p /run/udev /run/udev/data "$RUNTIME_DIR" /run/dbus /run/elogind \
-  /run/systemd/seats /run/systemd/sessions /run/systemd/users
+  /run/systemd/seats /run/systemd/sessions /run/systemd/users \
+  /run/polkit-1/rules.d /usr/local/share/polkit-1/rules.d \
+  /etc/polkit-1/rules.d /usr/share/polkit-1/rules.d
 chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
 
 if ! udevd_running; then

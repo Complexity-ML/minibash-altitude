@@ -3,4 +3,7 @@ etc/os-release
 etc/lsb-release
 etc/hostname
 etc/issue
+etc/passwd
+etc/group
+etc/shells
 etc/minibash/VERSION

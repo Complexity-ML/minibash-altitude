@@ -2,7 +2,16 @@
 set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-[ -S /run/dbus/system_bus_socket ] || { echo "polkit: waiting for dbus"; sleep 2; }
+mkdir -p /run/polkit-1/rules.d /usr/local/share/polkit-1/rules.d \
+  /etc/polkit-1/rules.d /usr/share/polkit-1/rules.d
+
+if [ ! -S /run/dbus/system_bus_socket ]; then
+  echo "polkit: waiting for dbus"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -S /run/dbus/system_bus_socket ] && break
+    sleep 1
+  done
+fi
 
 if pgrep -x polkitd >/dev/null 2>&1; then
   echo "polkit: already running"
