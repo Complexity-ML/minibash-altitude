@@ -9,7 +9,8 @@ Altitude captures it as `altitude-base`, `altitude-kernel` and
 the repository snapshot. The installed-system contract is therefore Altitude's
 package repository rather than a live Debian mirror. APT, dpkg and their state
 databases are removed from the delivered snapshot; `pkg` is the installed
-package-management interface.
+package-management interface. Local package archives can also be installed with
+`altpkg-install PACKAGE.altpkg`, which delegates to `pkg install-file`.
 
 ## Package format
 

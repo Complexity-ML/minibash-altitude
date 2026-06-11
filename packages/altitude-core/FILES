@@ -16,6 +16,7 @@ bin/altitude-software
 bin/altitude-control-center
 bin/altitude-command-runner
 bin/pkg
+bin/altpkg-install
 bin/altpkg-build
 bin/altrepo
 etc/minibash/system.conf

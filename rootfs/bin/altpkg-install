@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+usage: altpkg-install PACKAGE.altpkg [PACKAGE.altpkg.sig]
+
+Install a local Altitude package archive through the native package manager.
+This is a thin compatibility command for `pkg install-file`; service ownership
+stays with systemd, while package state is recorded for audit and verification.
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help|"")
+    usage
+    [ -n "${1:-}" ] || exit 1
+    exit 0
+    ;;
+esac
+
+if [ -n "${ALTPKG_PKG_BIN:-}" ]; then
+  pkg_bin="$ALTPKG_PKG_BIN"
+elif [ -x /bin/pkg ]; then
+  pkg_bin=/bin/pkg
+else
+  script_dir="$(cd "$(dirname "$0")" && pwd)"
+  pkg_bin="$script_dir/pkg"
+fi
+
+exec "$pkg_bin" install-file "$@"

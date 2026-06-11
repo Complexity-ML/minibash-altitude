@@ -55,6 +55,7 @@ bash "$ROOT/scripts/assemble-altitude-rootfs.sh" "$TMP/repository" \
   altitude-desktop-base
 grep -q '^NAME="Altitude Linux"$' "$TMP/final-root/etc/os-release"
 [ -x "$TMP/final-root/bin/pkg" ]
+[ -x "$TMP/final-root/bin/altpkg-install" ]
 [ -x "$TMP/final-root/bin/altitude-health" ]
 [ -x "$TMP/final-root/bin/systemd-bridge" ]
 [ -x "$TMP/final-root/bin/movectl" ]
