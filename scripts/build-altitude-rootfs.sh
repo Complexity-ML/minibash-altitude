@@ -29,6 +29,7 @@ base_packages=(
   altitude-kernel
   altitude-dropbear
   altitude-wpa-supplicant
+  altitude-dosfstools
   altitude-identity
   altitude-core
   altitude-services

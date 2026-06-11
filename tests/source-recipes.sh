@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 for recipe in busybox bash base-runtime binutils gcc-bootstrap linux-headers glibc-bootstrap \
-  forge-tools forge-libelf forge-openssl linux grub; do
+  forge-tools forge-libelf forge-openssl linux grub dosfstools; do
   manifest="$ROOT/recipes/$recipe/MANIFEST"
   build="$ROOT/recipes/$recipe/build.sh"
   [ -f "$manifest" ]
@@ -52,6 +52,11 @@ grep -q 'TARGET_AR=' "$ROOT/recipes/grub/build.sh"
 grep -q 'BUILD_CC=' "$ROOT/recipes/grub/build.sh"
 grep -q 'ac_cv_header_libdevmapper_h=no' "$ROOT/recipes/grub/build.sh"
 grep -q 'extra_deps.lst' "$ROOT/recipes/grub/build.sh"
+grep -q '^Source: dosfstools$' "$ROOT/sources/SOURCES.lock"
+grep -q 'fatlabel' "$ROOT/recipes/dosfstools/build.sh"
+grep -q 'dosfslabel' "$ROOT/recipes/dosfstools/build.sh"
+grep -q 'dosfstools' "$ROOT/scripts/build-gnome-stack.sh"
+grep -q 'altitude-dosfstools' "$ROOT/scripts/build-altitude-rootfs.sh"
 grep -q '^Source: bash$' "$ROOT/sources/SOURCES.lock"
 grep -q -- '--enable-static-link' "$ROOT/recipes/bash/build.sh"
 grep -q 'LDFLAGS="-static"' "$ROOT/recipes/bash/build.sh"

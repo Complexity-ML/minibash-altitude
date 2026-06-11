@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-dosfstools
+Version: 4.2
+Architecture: amd64
+Description: FAT/VFAT filesystem utilities for ESP maintenance, including fatlabel
