@@ -4,6 +4,8 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export DISPLAY="${DISPLAY:-:0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
 LOG="${ALTITUDE_DESKTOP_WARMUP_LOG:-/tmp/minibash-desktop-warmup.log}"
+QUIET_BACKGROUND="${ALTITUDE_DESKTOP_QUIET_BACKGROUND:-1}"
+DISABLE_CALENDAR="${ALTITUDE_DESKTOP_DISABLE_CALENDAR:-1}"
 
 fix_screen() {
   if command -v xset >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
@@ -15,9 +17,43 @@ fix_screen() {
   gsettings set org.gnome.desktop.search-providers disable-external true >/dev/null 2>&1 || true
 }
 
-for delay in 1 3; do
+quiet_background() {
+  [ "$QUIET_BACKGROUND" = 1 ] || return 0
+  # Altitude does not ship mail/calendar UX yet. GNOME can D-Bus activate these
+  # helpers for the shell calendar, but keeping them resident hurts the minimal
+  # desktop on nouveau more than it helps.
+  killall gnome-shell-calendar-server 2>/dev/null || true
+  killall evolution-source-registry 2>/dev/null || true
+  killall evolution-calendar-factory 2>/dev/null || true
+  killall evolution-addressbook-factory 2>/dev/null || true
+  killall ibus-daemon 2>/dev/null || true
+  killall ibus-daemon.real 2>/dev/null || true
+  killall ibus-extension-gtk3 2>/dev/null || true
+}
+
+disable_calendar_activation() {
+  [ "$DISABLE_CALENDAR" = 1 ] || return 0
+  local dir disabled svc base
+  dir=/usr/share/dbus-1/services
+  disabled=/var/lib/altitude/disabled-dbus-services
+  [ -d "$dir" ] || return 0
+  mkdir -p "$disabled" 2>/dev/null || true
+  for svc in \
+    "$dir"/org.gnome.Shell.CalendarServer.service \
+    "$dir"/org.gnome.evolution.dataserver.Sources5.service \
+    "$dir"/org.gnome.evolution.dataserver.Calendar8.service \
+    "$dir"/org.gnome.evolution.dataserver.AddressBook10.service; do
+    [ -f "$svc" ] || continue
+    base="$(basename "$svc")"
+    mv "$svc" "$disabled/$base" 2>/dev/null || true
+  done
+}
+
+for delay in 1 3 8; do
   sleep "$delay"
+  disable_calendar_activation
   fix_screen
+  quiet_background
 done
 
 exit 0

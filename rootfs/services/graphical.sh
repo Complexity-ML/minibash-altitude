@@ -44,7 +44,11 @@ cleanup() {
   log "stopping GNOME session"
   killall gnome-shell 2>/dev/null || true
   killall gnome-shell-calendar-server 2>/dev/null || true
+  killall evolution-source-registry 2>/dev/null || true
+  killall evolution-calendar-factory 2>/dev/null || true
+  killall evolution-addressbook-factory 2>/dev/null || true
   killall ibus-daemon 2>/dev/null || true
+  killall ibus-daemon.real 2>/dev/null || true
   killall ibus-extension-gtk3 2>/dev/null || true
 }
 trap '' HUP
@@ -165,7 +169,11 @@ if pgrep -x gnome-shell >/dev/null 2>&1; then
 fi
 
 killall gnome-shell-calendar-server 2>/dev/null || true
+killall evolution-source-registry 2>/dev/null || true
+killall evolution-calendar-factory 2>/dev/null || true
+killall evolution-addressbook-factory 2>/dev/null || true
 killall ibus-daemon 2>/dev/null || true
+killall ibus-daemon.real 2>/dev/null || true
 killall ibus-extension-gtk3 2>/dev/null || true
 
 log "starting GNOME on tty$VT"
