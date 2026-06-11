@@ -122,7 +122,7 @@ pressure_avg10() {
 }
 
 audit_gpu() {
-  local card="${1:-/dev/dri/card0}" sys_card driver vendor device render shadow accelerated atomic
+  local card="${1:-/dev/dri/card0}" sys_card driver vendor device render shadow accelerated atomic atomic_requested
   local tu116_required tu116_present tu116_missing gsp_missing pmu_unavailable health
   local gallium mesa_nouveau mesa_swrast mesa_virtio mesa_driver_present
   sys_card="/sys/class/drm/$(basename "$card")"
@@ -138,6 +138,11 @@ audit_gpu() {
   grep -q 'Not hardware accelerated' /var/log/gnome-shell.log 2>/dev/null && accelerated=false
   atomic=true
   grep -q 'non-atomic mode setting' /var/log/gnome-shell.log 2>/dev/null && atomic=false
+  atomic_requested=false
+  if [ "$driver" = nouveau ]; then
+    grep -Eq '(^|[[:space:]])options[[:space:]]+nouveau([[:space:]].*)?[[:space:]]atomic=1([[:space:]]|$)' \
+      /etc/modprobe.d/*.conf 2>/dev/null && atomic_requested=true
+  fi
   gallium=false
   [ -s /usr/lib/libgallium-26.1.2.so ] && gallium=true
   mesa_nouveau=false
@@ -192,6 +197,7 @@ EOF_FW
   registry_set /system/desktop/gpu/hardware-accelerated bool "$accelerated"
   registry_set /system/desktop/gpu/shadow-buffer bool "$shadow"
   registry_set /system/desktop/gpu/atomic-modeset bool "$atomic"
+  registry_set /system/desktop/gpu/atomic-requested bool "$atomic_requested"
   registry_set /system/desktop/gpu/pmu-firmware bool "$([ "$pmu_unavailable" = true ] && echo false || echo true)"
   registry_set /system/desktop/gpu/tu116-firmware-required int "$tu116_required"
   registry_set /system/desktop/gpu/tu116-firmware-present int "$tu116_present"

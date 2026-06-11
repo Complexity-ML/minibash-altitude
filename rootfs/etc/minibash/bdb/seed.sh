@@ -49,6 +49,13 @@ ensure_module crypto_user    "" crypto "AF_ALG userspace crypto"
 ensure_module algif_hash     "" crypto "AF_ALG hash interface"
 ensure_module algif_skcipher "" crypto "AF_ALG symmetric cipher interface"
 ensure_module des_generic    "" crypto "DES compatibility"
+ensure_module nouveau        "atomic=1" gpu "Nouveau KMS for HP Omen panel"
+
+if $BDB dump modules 2>/dev/null | cut -f1 | grep -qx nouveau; then
+  $BDB update modules --where name=nouveau params=atomic=1 autoload=true \
+    stage=gpu description="Nouveau KMS for HP Omen panel" >/dev/null
+fi
+
 mark_builtin_module() {
   name="$1"; description="$2"
   if $BDB dump modules 2>/dev/null | cut -f1 | grep -qx "$name"; then
