@@ -1,0 +1,242 @@
+#!/usr/bin/env gjs
+
+imports.gi.versions.Gtk = '4.0';
+
+const ByteArray = imports.byteArray;
+const { Gio, GLib, Gtk } = imports.gi;
+
+function bytesToString(bytes) {
+    return bytes ? ByteArray.toString(bytes) : '';
+}
+
+function runSync(argv) {
+    try {
+        const [ok, stdout, stderr, status] =
+            GLib.spawn_sync(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null);
+        return {
+            ok: ok && status === 0,
+            text: `${bytesToString(stdout)}${bytesToString(stderr)}`,
+            status,
+        };
+    } catch (e) {
+        return { ok: false, text: `${e.message}\n`, status: 127 };
+    }
+}
+
+function runAsync(argv, callback) {
+    let proc;
+    try {
+        proc = new Gio.Subprocess({
+            argv,
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+        });
+        proc.init(null);
+    } catch (e) {
+        callback(`$ ${argv.join(' ')}\n\n${e.message}\n`);
+        return;
+    }
+
+    proc.communicate_utf8_async(null, null, (source, result) => {
+        try {
+            const [, stdout, stderr] = source.communicate_utf8_finish(result);
+            const status = source.get_exit_status();
+            callback(`$ ${argv.join(' ')}\n\n${stdout || ''}${stderr || ''}${status === 0 ? '' : `\nexit: ${status}\n`}`);
+        } catch (e) {
+            callback(`$ ${argv.join(' ')}\n\n${e.message}\n`);
+        }
+    });
+}
+
+function shellSplit(text) {
+    if (text.trim() === '')
+        return [];
+    try {
+        const [, argv] = GLib.shell_parse_argv(text);
+        return argv;
+    } catch (_) {
+        return text.trim().split(/\s+/);
+    }
+}
+
+function loadActions() {
+    const result = runSync(['/bin/alt-ide', 'actions', 'list']);
+    const lines = result.text.split('\n').filter(line => line.trim() !== '');
+    return lines.map(line => {
+        const parts = line.split('\t');
+        return {
+            id: parts[0] || 'unknown',
+            label: parts[1] || parts[0] || 'unknown',
+            command: parts[2] || '',
+        };
+    });
+}
+
+const app = new Gtk.Application({
+    application_id: 'org.altitude.IDE',
+    flags: Gio.ApplicationFlags.FLAGS_NONE,
+});
+
+app.connect('activate', application => {
+    const win = new Gtk.ApplicationWindow({
+        application,
+        title: 'Altitude IDE',
+        default_width: 1100,
+        default_height: 720,
+    });
+
+    const root = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 10,
+        margin_top: 14,
+        margin_bottom: 14,
+        margin_start: 14,
+        margin_end: 14,
+    });
+
+    const title = new Gtk.Label({
+        label: '<b>Altitude IDE</b>\nAgentic workspace for building Altitude Linux.',
+        use_markup: true,
+        xalign: 0,
+    });
+    root.append(title);
+
+    const toolbar = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 8,
+    });
+    root.append(toolbar);
+
+    const filterEntry = new Gtk.Entry({
+        placeholder_text: 'filter actions',
+        hexpand: true,
+    });
+    toolbar.append(filterEntry);
+
+    const argsEntry = new Gtk.Entry({
+        placeholder_text: 'arguments for selected action',
+        hexpand: true,
+    });
+    toolbar.append(argsEntry);
+
+    const runButton = new Gtk.Button({ label: 'Run' });
+    toolbar.append(runButton);
+
+    const split = new Gtk.Paned({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        wide_handle: true,
+        hexpand: true,
+        vexpand: true,
+    });
+    root.append(split);
+
+    const actionList = new Gtk.ListBox({
+        selection_mode: Gtk.SelectionMode.SINGLE,
+        vexpand: true,
+    });
+    const actionScroller = new Gtk.ScrolledWindow({
+        child: actionList,
+        min_content_width: 320,
+        hscrollbar_policy: Gtk.PolicyType.NEVER,
+        vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
+    });
+    split.set_start_child(actionScroller);
+
+    const view = new Gtk.TextView({
+        editable: false,
+        monospace: true,
+        hexpand: true,
+        vexpand: true,
+    });
+    const buffer = view.get_buffer();
+    const outputScroller = new Gtk.ScrolledWindow({
+        child: view,
+        hexpand: true,
+        vexpand: true,
+    });
+    split.set_end_child(outputScroller);
+
+    const actions = loadActions();
+    let visibleActions = [];
+
+    function selectedAction() {
+        const row = actionList.get_selected_row();
+        if (!row)
+            return null;
+        return visibleActions[row.get_index()] || null;
+    }
+
+    function renderActions() {
+        while (true) {
+            const child = actionList.get_first_child();
+            if (!child)
+                break;
+            actionList.remove(child);
+        }
+
+        const query = filterEntry.get_text().trim().toLowerCase();
+        visibleActions = actions.filter(action =>
+            query === '' ||
+            action.id.toLowerCase().includes(query) ||
+            action.label.toLowerCase().includes(query) ||
+            action.command.toLowerCase().includes(query)
+        );
+
+        for (const action of visibleActions) {
+            const box = new Gtk.Box({
+                orientation: Gtk.Orientation.VERTICAL,
+                spacing: 2,
+                margin_top: 8,
+                margin_bottom: 8,
+                margin_start: 8,
+                margin_end: 8,
+            });
+            box.append(new Gtk.Label({
+                label: `<b>${GLib.markup_escape_text(action.label, -1)}</b>`,
+                use_markup: true,
+                xalign: 0,
+            }));
+            box.append(new Gtk.Label({
+                label: `${action.id}\n${action.command}`,
+                xalign: 0,
+                selectable: true,
+            }));
+            actionList.append(box);
+        }
+    }
+
+    function show(label, text) {
+        buffer.set_text(`${label}\n${'='.repeat(label.length)}\n\n${text}`, -1);
+    }
+
+    function runSelected() {
+        const action = selectedAction();
+        if (!action) {
+            show('Altitude IDE', 'No action selected.\n');
+            return;
+        }
+        const args = shellSplit(argsEntry.get_text());
+        const argv = ['/bin/alt-ide', 'session', 'run', action.id, ...args];
+        show(action.label, 'Running...\n');
+        runAsync(argv, output => show(action.label, output));
+    }
+
+    function showDashboard() {
+        runAsync(['/bin/alt-ide', 'session', 'start', 'ui'], startOutput => {
+            runAsync(['/bin/alt-ide', 'actions', 'run', 'workspace.status'], statusOutput => {
+                show('Dashboard', `${startOutput}\n${statusOutput}`);
+            });
+        });
+    }
+
+    runButton.connect('clicked', runSelected);
+    actionList.connect('row-activated', runSelected);
+    filterEntry.connect('changed', renderActions);
+    argsEntry.connect('activate', runSelected);
+
+    renderActions();
+    win.set_child(root);
+    win.present();
+    showDashboard();
+});
+
+app.run(ARGV);

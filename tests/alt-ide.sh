@@ -41,6 +41,8 @@ export ALT_IDE_AGENT_BIN="$TMP/bin/alt-agent"
 export ALT_IDE_EDIT_BIN="$TMP/bin/alt-edit"
 export ALT_IDE_DEV_ENV_BIN="$TMP/bin/alt-agent"
 export ALT_IDE_SHELL_LINT_BIN="$TMP/bin/alt-agent"
+export ALT_IDE_STATE_DIR="$TMP/state"
+export ALT_IDE_LOG="$TMP/ide.log"
 
 bash "$ROOT/rootfs/bin/alt-ide" workspace status > "$TMP/workspace.out"
 grep -q "Altitude IDE workspace" "$TMP/workspace.out"
@@ -51,6 +53,19 @@ grep -q "scripts/demo.sh" "$TMP/files.out"
 
 bash "$ROOT/rootfs/bin/alt-ide" files open scripts/demo.sh > "$TMP/open.out"
 grep -q "edit scripts/demo.sh" "$TMP/open.out"
+
+bash "$ROOT/rootfs/bin/alt-ide" session start test > "$TMP/session-start.out"
+grep -q "Altitude IDE session started" "$TMP/session-start.out"
+grep -q "^id=" "$TMP/state/current"
+
+bash "$ROOT/rootfs/bin/alt-ide" session status > "$TMP/session-status.out"
+grep -q "workspace=$TMP/workspace" "$TMP/session-status.out"
+
+bash "$ROOT/rootfs/bin/alt-ide" session run agent.context scripts/demo.sh > "$TMP/session-action.out"
+grep -q "Altitude IDE Agent Context" "$TMP/session-action.out"
+bash "$ROOT/rootfs/bin/alt-ide" session tail 10 > "$TMP/session-tail.out"
+grep -q "action.start" "$TMP/session-tail.out"
+grep -q "action.ok" "$TMP/session-tail.out"
 
 bash "$ROOT/rootfs/bin/alt-ide" actions list > "$TMP/actions.out"
 grep -q "^agent.context" "$TMP/actions.out"

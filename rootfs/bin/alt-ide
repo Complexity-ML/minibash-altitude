@@ -10,6 +10,8 @@ ALT_AGENT_BIN="${ALT_IDE_AGENT_BIN:-/bin/alt-agent}"
 ALT_EDIT_BIN="${ALT_IDE_EDIT_BIN:-/bin/alt-edit}"
 ALT_DEV_ENV_BIN="${ALT_IDE_DEV_ENV_BIN:-/bin/alt-dev-env}"
 ALT_SHELL_LINT_BIN="${ALT_IDE_SHELL_LINT_BIN:-/bin/alt-shell-lint}"
+ALT_IDE_STATE_DIR="${ALT_IDE_STATE_DIR:-/run/altitude-ide}"
+ALT_IDE_LOG="${ALT_IDE_LOG:-/var/log/altitude/ide.log}"
 
 die() { echo "alt-ide: $*" >&2; exit 1; }
 valid_relpath() {
@@ -22,6 +24,27 @@ valid_relpath() {
 project_cd() {
   [ -d "$SOURCE_ROOT" ] || die "workspace missing: $SOURCE_ROOT"
   cd "$SOURCE_ROOT"
+}
+
+now_iso() {
+  date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date 2>/dev/null || echo unknown
+}
+
+session_id() {
+  if [ -n "${ALT_IDE_SESSION_ID:-}" ]; then
+    printf '%s\n' "$ALT_IDE_SESSION_ID"
+  elif [ -r "$ALT_IDE_STATE_DIR/current" ]; then
+    sed -n 's/^id=//p' "$ALT_IDE_STATE_DIR/current" | head -n 1
+  else
+    printf 'none\n'
+  fi
+}
+
+session_log() {
+  local event="$1" detail="${2:-}"
+  mkdir -p "$(dirname "$ALT_IDE_LOG")" "$ALT_IDE_STATE_DIR" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\n' "$(now_iso)" "${ALT_IDE_SESSION_ID:-none}" "$event" "$detail" \
+    >> "$ALT_IDE_LOG" 2>/dev/null || true
 }
 
 usage() {
@@ -37,6 +60,10 @@ Commands:
   workspace status             show workspace, package and tool status
   files list [QUERY]           list project files
   files open PATH              edit a project file
+  session start [NAME]         start an observable IDE session
+  session status               show current IDE session state
+  session run ID [ARGS...]     run and log one action in the session
+  session tail [N]             show recent session log lines
   actions list                 list IDE actions for UI/agents
   actions run ID [ARGS...]     run one IDE action by stable id
   diagnostics run [PATH...]    run project diagnostics
@@ -89,6 +116,70 @@ cmd_files() {
       exec "$ALT_EDIT_BIN" "$path"
       ;;
     *) die "unknown files command: $sub" ;;
+  esac
+}
+
+cmd_session() {
+  local sub="${1:-status}" name id lines
+  shift || true
+  case "$sub" in
+    start)
+      name="${1:-ssh}"
+      mkdir -p "$ALT_IDE_STATE_DIR" "$(dirname "$ALT_IDE_LOG")" 2>/dev/null || true
+      id="$(date -u '+%Y%m%dT%H%M%SZ' 2>/dev/null || echo session)-$$"
+      ALT_IDE_SESSION_ID="$id"
+      local started_at
+      started_at="$(now_iso)"
+      {
+        echo "id=$id"
+        echo "name=$name"
+        echo "workspace=$SOURCE_ROOT"
+        echo "started_at=$started_at"
+      } > "$ALT_IDE_STATE_DIR/current"
+      session_log start "name=$name workspace=$SOURCE_ROOT"
+      echo "Altitude IDE session started"
+      echo "id=$id"
+      echo "workspace=$SOURCE_ROOT"
+      echo "log=$ALT_IDE_LOG"
+      echo
+      echo "Follow:"
+      echo "  alt-ide session tail"
+      echo "Run:"
+      echo "  alt-ide session run agent.context"
+      ;;
+    status)
+      if [ -r "$ALT_IDE_STATE_DIR/current" ]; then
+        cat "$ALT_IDE_STATE_DIR/current"
+      else
+        echo "id=none"
+        echo "workspace=$SOURCE_ROOT"
+      fi
+      echo "log=$ALT_IDE_LOG"
+      ;;
+    run)
+      id="${1:-}"
+      [ -n "$id" ] || die "usage: alt-ide session run ACTION [ARGS...]"
+      shift || true
+      ALT_IDE_SESSION_ID="$(session_id)"
+      session_log action.start "$id $*"
+      if cmd_actions run "$id" "$@"; then
+        session_log action.ok "$id"
+      else
+        local status=$?
+        session_log action.fail "$id status=$status"
+        return "$status"
+      fi
+      ;;
+    tail)
+      lines="${1:-40}"
+      [ -r "$ALT_IDE_LOG" ] || { echo "no IDE log: $ALT_IDE_LOG"; return 0; }
+      tail -n "$lines" "$ALT_IDE_LOG"
+      ;;
+    watch)
+      [ -r "$ALT_IDE_LOG" ] || touch "$ALT_IDE_LOG" 2>/dev/null || true
+      tail -f "$ALT_IDE_LOG"
+      ;;
+    *) die "unknown session command: $sub" ;;
   esac
 }
 
@@ -193,7 +284,11 @@ cmd_agent() {
       if [ "$#" -gt 0 ]; then
         for path in "$@"; do
           valid_relpath "$path" || die "unsafe path: $path"
-          [ -e "$path" ] && printf '%s\n' "$path"
+          if [ -e "$path" ]; then
+            printf '%s\n' "$path"
+          else
+            printf 'missing:%s\n' "$path"
+          fi
         done
       else
         cmd_files list | sed -n '1,80p'
@@ -311,6 +406,7 @@ shift || true
 case "$command" in
   workspace) cmd_workspace "$@" ;;
   files) cmd_files "$@" ;;
+  session) cmd_session "$@" ;;
   actions) cmd_actions "$@" ;;
   diagnostics) cmd_diagnostics "$@" ;;
   task) cmd_task "$@" ;;
