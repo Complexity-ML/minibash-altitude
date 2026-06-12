@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORKSHOP="${ALTITUDE_WORKSHOP_ROOT:-/srv/altitude}"
+LOG_ROOT="${ALTITUDE_AGENT_LOG_ROOT:-/var/log/altitude/agent}"
+POLICY="${ALTITUDE_AGENT_POLICY:-/etc/altitude/agent/policy.conf}"
+SCRIPTS="${ALTITUDE_AGENT_SCRIPTS:-/usr/src/altitude/scripts}"
+REPO_ROOT="${ALTITUDE_REPO_ROOT:-$WORKSHOP/repository}"
+PKG_BIN="${ALTITUDE_PKG_BIN:-/bin/pkg}"
+BDBCTL_BIN="${ALTITUDE_BDBCTL_BIN:-/bin/bdbctl}"
+SYSTEMD_AUDIT_BIN="${ALTITUDE_SYSTEMD_AUDIT_BIN:-/bin/systemd-audit}"
+
+usage() {
+  cat <<'USAGE'
+usage: alt-agent COMMAND [ARGS...]
+
+Safe operator commands for agent-assisted Altitude development:
+  env                         print workshop environment exports
+  build-recipe NAME           build one source recipe into package staging
+  publish-staging             publish staged .altpkg files to the local repo
+  repo-refresh                verify configured repository metadata
+  pkg-info NAME               show package metadata
+  pkg-verify [NAME]           verify installed package files
+  systemd-audit               refresh and show observed systemd audit state
+  logs NAME                   show recent systemd journal or service log
+  status                      summarize repo, packages and systemd health
+
+This is not a general-purpose root shell. Destructive disk, reboot and arbitrary
+systemctl operations are intentionally out of scope.
+USAGE
+}
+
+die() { echo "alt-agent: $*" >&2; exit 1; }
+valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9_.@:+-]+$ ]]; }
+log() {
+  mkdir -p "$LOG_ROOT"
+  printf '%s %s\n' "$(date +%FT%T%z 2>/dev/null || echo 0)" "$*" \
+    >> "$LOG_ROOT/agent.log"
+}
+
+source_workshop() {
+  if [ -r "$SCRIPTS/use-altitude-workshop.sh" ]; then
+    # shellcheck source=/usr/src/altitude/scripts/use-altitude-workshop.sh
+    source "$SCRIPTS/use-altitude-workshop.sh"
+  fi
+}
+
+cmd_env() {
+  if [ -x "$SCRIPTS/use-altitude-workshop.sh" ]; then
+    "$SCRIPTS/use-altitude-workshop.sh"
+  else
+    printf 'export ALTITUDE_WORKSHOP_ROOT=%q\n' "$WORKSHOP"
+    printf 'export ALTITUDE_REPO_ROOT=%q\n' "$REPO_ROOT"
+  fi
+}
+
+cmd_build_recipe() {
+  local name="${1:-}"
+  valid_name "$name" || die "invalid recipe name: $name"
+  [ -x "$SCRIPTS/build-source-recipe.sh" ] || die "missing build script: $SCRIPTS/build-source-recipe.sh"
+  source_workshop
+  log "build-recipe $name"
+  "$SCRIPTS/build-source-recipe.sh" "$name" 2>&1 |
+    tee "$LOG_ROOT/build-$name.log"
+}
+
+cmd_publish_staging() {
+  [ -x "$SCRIPTS/publish-workshop-packages.sh" ] || die "missing publish script: $SCRIPTS/publish-workshop-packages.sh"
+  source_workshop
+  log "publish-staging"
+  "$SCRIPTS/publish-workshop-packages.sh" 2>&1 |
+    tee "$LOG_ROOT/publish-staging.log"
+}
+
+cmd_repo_refresh() {
+  log "repo-refresh"
+  "$PKG_BIN" refresh
+}
+
+cmd_pkg_info() {
+  local name="${1:-}"
+  valid_name "$name" || die "invalid package name: $name"
+  "$PKG_BIN" info "$name"
+}
+
+cmd_pkg_verify() {
+  local name="${1:-}"
+  if [ -n "$name" ]; then
+    valid_name "$name" || die "invalid package name: $name"
+    "$PKG_BIN" verify "$name"
+  else
+    "$PKG_BIN" verify
+  fi
+}
+
+cmd_systemd_audit() {
+  log "systemd-audit"
+  "$SYSTEMD_AUDIT_BIN" refresh
+  "$SYSTEMD_AUDIT_BIN" list
+}
+
+cmd_logs() {
+  local name="${1:-}"
+  valid_name "$name" || die "invalid log name: $name"
+  if command -v journalctl >/dev/null 2>&1; then
+    journalctl -u "$name" --no-pager -n 120 2>/dev/null && return 0
+  fi
+  if [ -f "/var/log/service-$name.log" ]; then
+    tail -n 120 "/var/log/service-$name.log"
+  elif [ -f "/var/log/$name.log" ]; then
+    tail -n 120 "/var/log/$name.log"
+  else
+    die "no log found for $name"
+  fi
+}
+
+cmd_status() {
+  echo "Altitude agent status"
+  echo "workshop=$WORKSHOP"
+  if [ -d "$REPO_ROOT" ]; then
+    printf 'repo_packages='
+    grep -c '^Package: ' "$REPO_ROOT/INDEX" 2>/dev/null || echo 0
+  fi
+  "$PKG_BIN" refresh 2>/dev/null || true
+  "$BDBCTL_BIN" systemd 2>/dev/null | sed -n '1,80p' || true
+}
+
+mkdir -p "$LOG_ROOT"
+[ -r "$POLICY" ] && . "$POLICY"
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  env) cmd_env ;;
+  build-recipe) cmd_build_recipe "$@" ;;
+  publish-staging) cmd_publish_staging "$@" ;;
+  repo-refresh) cmd_repo_refresh ;;
+  pkg-info) cmd_pkg_info "$@" ;;
+  pkg-verify) cmd_pkg_verify "$@" ;;
+  systemd-audit) cmd_systemd_audit ;;
+  logs) cmd_logs "$@" ;;
+  status) cmd_status ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; die "command not allowed: $command" ;;
+esac

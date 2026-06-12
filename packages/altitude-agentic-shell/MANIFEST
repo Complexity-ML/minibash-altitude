@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-agentic-shell
+Version: 0.1.0
+Architecture: all
+Description: Whitelisted agent operator shell for Altitude builds, packages and audit

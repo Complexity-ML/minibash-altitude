@@ -34,6 +34,7 @@ base_packages=(
   altitude-dosfstools
   altitude-identity
   altitude-core
+  altitude-agentic-shell
   altitude-services
   altitude-access
 )
