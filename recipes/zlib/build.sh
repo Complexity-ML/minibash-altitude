@@ -22,7 +22,7 @@ PAYLOAD="$WORK/payload"
 export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
 
 for tool in "$CC" "$AR" "$RANLIB" "$STRIP" make; do
-  [ -x "$tool" ] || { echo "zlib: missing toolchain component: $tool" >&2; exit 1; }
+  command -v "$tool" >/dev/null 2>&1 || { echo "zlib: missing toolchain component: $tool" >&2; exit 1; }
 done
 
 rm -rf "$WORK"
