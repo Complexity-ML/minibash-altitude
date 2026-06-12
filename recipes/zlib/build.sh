@@ -7,7 +7,9 @@ WORK="${ALTITUDE_RECIPE_WORK:-$ROOT/out/source-work/zlib}"
 VERSION=1.3.1
 TARGET="${ALTITUDE_TARGET_TRIPLET:-x86_64-altitude-linux-gnu}"
 TOOLCHAIN_ROOT="${ALTITUDE_TOOLCHAIN_ROOT:-}"
+FORGE_ROOT="${ALTITUDE_FORGE_ROOT:-}"
 TOOLCHAIN="$TOOLCHAIN_ROOT/opt/altitude/toolchain"
+FORGE="$FORGE_ROOT/opt/altitude/forge"
 SYSROOT="$TOOLCHAIN/sysroot"
 CC="$TOOLCHAIN/bin/$TARGET-gcc"
 AR="$TOOLCHAIN/bin/$TARGET-ar"
@@ -17,7 +19,9 @@ TARBALL="$(bash "$ROOT/scripts/source-fetch.sh" zlib)"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 PAYLOAD="$WORK/payload"
 
-for tool in "$CC" "$AR" "$RANLIB" "$STRIP"; do
+export PATH="$FORGE/bin:$TOOLCHAIN/bin:$PATH"
+
+for tool in "$CC" "$AR" "$RANLIB" "$STRIP" make; do
   [ -x "$tool" ] || { echo "zlib: missing toolchain component: $tool" >&2; exit 1; }
 done
 

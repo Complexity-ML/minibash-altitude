@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+POLICY="${ALTITUDE_AGENT_POLICY:-/etc/altitude/agent/policy.conf}"
+
+[ -r "$POLICY" ] && . "$POLICY"
+
 WORKSHOP="${ALTITUDE_WORKSHOP_ROOT:-/srv/altitude}"
 LOG_ROOT="${ALTITUDE_AGENT_LOG_ROOT:-/var/log/altitude/agent}"
-POLICY="${ALTITUDE_AGENT_POLICY:-/etc/altitude/agent/policy.conf}"
 SCRIPTS="${ALTITUDE_AGENT_SCRIPTS:-/usr/src/altitude/scripts}"
 REPO_ROOT="${ALTITUDE_REPO_ROOT:-$WORKSHOP/repository}"
 PKG_BIN="${ALTITUDE_PKG_BIN:-/bin/pkg}"
@@ -126,7 +129,6 @@ cmd_status() {
 }
 
 mkdir -p "$LOG_ROOT"
-[ -r "$POLICY" ] && . "$POLICY"
 
 command="${1:-help}"
 shift || true
