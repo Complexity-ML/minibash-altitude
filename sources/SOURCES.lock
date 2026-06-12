@@ -248,6 +248,11 @@ Version: 6.5
 URL: https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz
 SHA256: 136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6
 
+Source: vim
+Version: 9.2.0000
+URL: https://github.com/vim/vim/archive/refs/tags/v9.2.0000.tar.gz
+SHA256: 875875fb5988af3db0726bef9b048a559a9563aa0ecca8240e82057e8e5941c3
+
 Source: dbus
 Version: 1.16.2
 URL: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz

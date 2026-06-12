@@ -5,7 +5,15 @@ POLICY="${ALTITUDE_AGENT_POLICY:-/etc/altitude/agent/policy.conf}"
 [ -r "$POLICY" ] && . "$POLICY"
 
 SOURCE_ROOT="${ALTITUDE_AGENT_SOURCE_ROOT:-/root/minibash-linux}"
-EDITOR_BIN="${EDITOR:-vi}"
+if [ -n "${EDITOR:-}" ]; then
+  EDITOR_BIN="$EDITOR"
+elif command -v alt-vim >/dev/null 2>&1 && command -v vim >/dev/null 2>&1; then
+  EDITOR_BIN=alt-vim
+elif command -v vim >/dev/null 2>&1; then
+  EDITOR_BIN=vim
+else
+  EDITOR_BIN=vi
+fi
 
 usage() {
   cat <<'USAGE'

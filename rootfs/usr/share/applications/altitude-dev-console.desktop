@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Altitude Vim IDE
+Comment=Edit Altitude Linux sources with Vim
+Exec=/bin/alt-ide-terminal
+TryExec=/bin/alt-ide-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=Development;System;Utility;TerminalEmulator;
+Keywords=altitude;dev;ide;vim;editor;sources;recipes;

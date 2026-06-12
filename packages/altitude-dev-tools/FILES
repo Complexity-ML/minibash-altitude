@@ -1,2 +1,6 @@
 bin/alt-edit
 bin/alt-ide
+bin/alt-ide-terminal
+bin/alt-vim
+etc/altitude/vim
+usr/share/applications/altitude-dev-console.desktop

@@ -1,0 +1,5 @@
+Format: altitude-package-1
+Name: altitude-vim
+Version: 9.2.0000
+Architecture: amd64
+Description: Vim terminal editor for Altitude development

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+registry_value() {
+  [ -x /bin/bdbreg ] || return 1
+  /bin/bdbreg get /system/locale/keymap 2>/dev/null | tail -n 1
+}
+
+cmdline_value() {
+  sed -n 's/.*minibash\.keymap=\([A-Za-z0-9_-]*\).*/\1/p' /proc/cmdline 2>/dev/null
+}
+
+vconsole_value() {
+  [ -r /etc/vconsole.conf ] || return 1
+  sed -n 's/^KEYMAP=\([^ #]*\).*/\1/p' /etc/vconsole.conf | head -n 1
+}
+
+xkb_value() {
+  [ -r /etc/default/keyboard ] || return 1
+  sed -n 's/^XKBLAYOUT="\{0,1\}\([^" #]*\).*/\1/p' /etc/default/keyboard | head -n 1
+}
+
+normalize() {
+  case "$1" in
+    fr|fr-*|azerty) echo fr ;;
+    us|en|qwerty) echo us ;;
+    "") return 1 ;;
+    *) echo "$1" ;;
+  esac
+}
+
+layout="$(
+  cmdline_value ||
+  registry_value ||
+  vconsole_value ||
+  xkb_value ||
+  echo fr
+)"
+normalize "$layout"
