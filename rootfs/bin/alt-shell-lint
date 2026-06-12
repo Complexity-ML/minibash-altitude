@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+usage: alt-shell-lint [PATH...]
+
+Lint shell scripts. Uses shellcheck when available, otherwise falls back to
+portable checks useful on a young Altitude system:
+  - bash -n syntax validation
+  - CRLF detection
+  - suspicious unquoted command substitutions
+USAGE
+}
+
+is_shell_file() {
+  local file="$1" first=""
+  case "$file" in
+    *.sh|*.bash|*/services/*.sh|*/scripts/*.sh|*/bin/*) return 0 ;;
+  esac
+  IFS= read -r first < "$file" || true
+  case "$first" in '#!'*sh*|'#!'*bash*) return 0 ;; esac
+  return 1
+}
+
+collect_files() {
+  if [ "$#" -gt 0 ]; then
+    for path in "$@"; do
+      if [ -d "$path" ]; then
+        find "$path" -type f 2>/dev/null
+      else
+        printf '%s\n' "$path"
+      fi
+    done
+    return
+  fi
+  find scripts rootfs/bin rootfs/services tests recipes packages \
+    -type f 2>/dev/null | sort
+}
+
+run_fallback() {
+  local file="$1" failed=0
+  bash -n "$file" || failed=1
+  if grep -q "$(printf '\r')" "$file" 2>/dev/null; then
+    echo "$file: CRLF line endings detected" >&2
+    failed=1
+  fi
+  if grep -nE '[^"]\$\([^)]+\)' "$file" 2>/dev/null |
+      grep -vE '(^|[[:space:]])(local|export|readonly)[[:space:]][A-Za-z_][A-Za-z0-9_]*='; then
+    echo "$file: review unquoted command substitution" >&2
+  fi
+  return "$failed"
+}
+
+[ "${1:-}" != "-h" ] && [ "${1:-}" != "--help" ] || { usage; exit 0; }
+
+status=0
+while IFS= read -r file; do
+  [ -f "$file" ] || continue
+  is_shell_file "$file" || continue
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck "$file" || status=1
+  else
+    run_fallback "$file" || status=1
+  fi
+done < <(collect_files "$@")
+
+exit "$status"

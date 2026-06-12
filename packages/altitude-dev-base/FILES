@@ -1,0 +1,3 @@
+bin/alt-dev-check
+bin/alt-dev-env
+bin/alt-shell-lint

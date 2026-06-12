@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_ROOT="${ALTITUDE_AGENT_SOURCE_ROOT:-/root/minibash-linux}"
+[ -d "$SOURCE_ROOT" ] || SOURCE_ROOT="$(pwd)"
+cd "$SOURCE_ROOT"
+
+run() {
+  echo
+  echo "== $* =="
+  "$@"
+}
+
+run /bin/alt-dev-env
+run /bin/alt-shell-lint scripts rootfs/bin rootfs/services tests
+
+if [ -x ./tests/alt-agent.sh ]; then
+  run ./tests/alt-agent.sh
+fi
+if [ -x ./tests/source-recipes.sh ]; then
+  run ./tests/source-recipes.sh
+fi
+if [ -x ./tests/altitude-rootfs.sh ]; then
+  run ./tests/altitude-rootfs.sh
+fi
+
+if command -v git >/dev/null 2>&1; then
+  run git status --short
+fi

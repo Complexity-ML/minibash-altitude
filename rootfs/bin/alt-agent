@@ -27,6 +27,9 @@ Safe operator commands for agent-assisted Altitude development:
   repo-refresh                verify configured repository metadata
   pkg-info NAME               show package metadata
   pkg-verify [NAME]           verify installed package files
+  dev-env                     show native development tool availability
+  dev-check                   run Altitude development checks
+  shell-lint [PATH...]        lint shell scripts with shellcheck or fallback
   systemd-audit               refresh and show observed systemd audit state
   logs NAME                   show recent systemd journal or service log
   status                      summarize repo, packages and systemd health
@@ -115,6 +118,24 @@ cmd_pkg_verify() {
   fi
 }
 
+cmd_dev_env() {
+  [ -x /bin/alt-dev-env ] || die "missing /bin/alt-dev-env"
+  /bin/alt-dev-env
+}
+
+cmd_dev_check() {
+  [ -x /bin/alt-dev-check ] || die "missing /bin/alt-dev-check"
+  source_workshop
+  log "dev-check"
+  /bin/alt-dev-check 2>&1 | tee "$LOG_ROOT/dev-check.log"
+}
+
+cmd_shell_lint() {
+  [ -x /bin/alt-shell-lint ] || die "missing /bin/alt-shell-lint"
+  log "shell-lint $*"
+  /bin/alt-shell-lint "$@"
+}
+
 cmd_systemd_audit() {
   log "systemd-audit"
   "$SYSTEMD_AUDIT_BIN" refresh
@@ -160,6 +181,9 @@ case "$command" in
   repo-refresh) cmd_repo_refresh ;;
   pkg-info) cmd_pkg_info "$@" ;;
   pkg-verify) cmd_pkg_verify "$@" ;;
+  dev-env) cmd_dev_env "$@" ;;
+  dev-check) cmd_dev_check "$@" ;;
+  shell-lint) cmd_shell_lint "$@" ;;
   systemd-audit) cmd_systemd_audit ;;
   logs) cmd_logs "$@" ;;
   status) cmd_status ;;

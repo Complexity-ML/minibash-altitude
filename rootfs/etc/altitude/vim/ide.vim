@@ -142,6 +142,8 @@ function! s:Palette() abort
         \ ['Open file', 'AltitudeFiles'],
         \ ['Search project', 'AltitudeSearch'],
         \ ['Build recipe', 'AltitudeBuild'],
+        \ ['Dev check', 'AltitudeDevCheck'],
+        \ ['Shell lint', 'AltitudeShellLint'],
         \ ['Publish staging', 'AltitudePublish'],
         \ ['Systemd audit', 'AltitudeAudit'],
         \ ['Graphical logs', 'AltitudeLogs'],
@@ -157,6 +159,9 @@ endfunction
 
 command! AltitudeStatus call s:Run('status', '/bin/alt-agent status')
 command! AltitudeKeyboard call s:Run('keyboard', 'printf "layout=%s\nxkb=%s\n" "$ALTITUDE_KEYBOARD_LAYOUT" "$XKB_DEFAULT_LAYOUT"')
+command! AltitudeDevEnv call s:Run('dev env', '/bin/alt-agent dev-env')
+command! AltitudeDevCheck call s:Run('dev check', '/bin/alt-agent dev-check')
+command! -nargs=* AltitudeShellLint call s:Run('shell lint', '/bin/alt-agent shell-lint ' . <q-args>)
 command! -nargs=? AltitudeFiles call s:FindFile(<q-args>)
 command! -nargs=? AltitudeSearch call s:SearchProject(<q-args>)
 command! AltitudeRecipes call s:Run('recipes', '/bin/alt-agent recipes')
@@ -175,9 +180,11 @@ nnoremap <leader>af :AltitudeFiles<CR>
 nnoremap <leader>a/ :AltitudeSearch<CR>
 nnoremap <leader>ar :AltitudeRecipes<CR>
 nnoremap <leader>ab :AltitudeBuild<CR>
+nnoremap <leader>ad :AltitudeDevCheck<CR>
+nnoremap <leader>ac :AltitudeShellLint<CR>
 nnoremap <leader>ap :AltitudePublish<CR>
 nnoremap <leader>aa :AltitudeAudit<CR>
 nnoremap <leader>ag :AltitudeGit<CR>
 nnoremap <leader>al :AltitudeLogs<CR>
 
-echo "Altitude Vim IDE [" . g:altitude_keyboard_layout . "]: Ctrl-P palette, <Space>af files, <Space>a/ search, <Space>ab build"
+echo "Altitude Vim IDE [" . g:altitude_keyboard_layout . "]: Ctrl-P palette, <Space>af files, <Space>a/ search, <Space>ad check"

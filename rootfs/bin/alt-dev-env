@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+check_tool() {
+  local label="$1" binary="$2" hint="${3:-}"
+  if command -v "$binary" >/dev/null 2>&1; then
+    printf 'ok\t%s\t%s\n' "$label" "$(command -v "$binary")"
+  elif [ -n "$hint" ]; then
+    printf 'missing\t%s\t%s\n' "$label" "$hint"
+  else
+    printf 'missing\t%s\t-\n' "$label"
+  fi
+}
+
+echo "Altitude dev environment"
+echo "status	tool	detail"
+check_tool shell bash "install altitude-bash"
+check_tool editor vim "install altitude-vim"
+check_tool vcs git "build/package git"
+check_tool search rg "build/package ripgrep"
+check_tool make make "install runtime make"
+check_tool awk awk "install gawk/coreutils layer"
+check_tool sed sed "install sed/coreutils layer"
+check_tool grep grep "install grep/coreutils layer"
+check_tool find find "install findutils/coreutils layer"
+check_tool patch patch "build/package patch"
+check_tool diff diff "build/package diffutils"
+check_tool shellcheck shellcheck "build/package shellcheck"
+check_tool shfmt shfmt "build/package shfmt"
+check_tool tests bats "build/package bats"
+check_tool trace strace "build/package strace"
+check_tool fetch curl "build/package curl"
