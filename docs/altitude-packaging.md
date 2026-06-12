@@ -44,6 +44,28 @@ file:///var/lib/altitude/repository
 The same format supports HTTPS. A production server only needs to serve the
 repository directory as static files.
 
+Developer machines can also use a dedicated Altitude workshop volume. On the
+HP Omen target, `/dev/sda4` is labelled `altitude-spare` and mounted at
+`/srv/altitude`:
+
+```text
+/srv/altitude/repository
+/srv/altitude/sources
+/srv/altitude/builds
+/srv/altitude/logs
+/srv/altitude/images
+```
+
+Initialize it with:
+
+```sh
+scripts/init-altitude-workshop.sh
+```
+
+The script does not format disks. It only mounts the existing
+`LABEL=altitude-spare`, initializes `altrepo`, and points
+`/etc/altitude/repositories.conf` at `file:///srv/altitude/repository`.
+
 ## Release policy
 
 Altitude uses semantic versions for owned packages and named OS releases:
