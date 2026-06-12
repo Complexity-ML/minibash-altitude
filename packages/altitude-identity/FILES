@@ -3,6 +3,9 @@ etc/os-release
 etc/lsb-release
 etc/hostname
 etc/issue
+etc/locale.conf
+etc/environment
+etc/profile
 etc/passwd
 etc/group
 etc/shells

@@ -66,6 +66,20 @@ The script does not format disks. It only mounts the existing
 `LABEL=altitude-spare`, initializes `altrepo`, and points
 `/etc/altitude/repositories.conf` at `file:///srv/altitude/repository`.
 
+Then source the workshop environment before builds:
+
+```sh
+source scripts/use-altitude-workshop.sh
+scripts/build-source-recipe.sh zlib
+scripts/publish-workshop-packages.sh
+```
+
+With that environment, source archives are cached under
+`/srv/altitude/sources`, recipe work directories go under
+`/srv/altitude/builds/source-work/<recipe>`, new `.altpkg` files land in
+`/srv/altitude/packages-staging`, and publishing adds them to
+`/srv/altitude/repository`.
+
 ## Release policy
 
 Altitude uses semantic versions for owned packages and named OS releases:

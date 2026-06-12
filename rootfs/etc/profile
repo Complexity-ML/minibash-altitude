@@ -1,0 +1,12 @@
+# Altitude shell environment.
+#
+# The base image does not ship generated glibc locale archives yet. Keep shells
+# on the built-in C locale so SSH clients cannot inject unsupported
+# LC_ALL values such as fr_FR.UTF-8 and trigger noisy locale warnings.
+export LANG="${LANG:-C}"
+case "${LC_ALL:-$LANG}" in
+  C|POSIX) ;;
+  *) LC_ALL=C ;;
+esac
+export LC_ALL="${LC_ALL:-C}"
+export LANGUAGE="${LANGUAGE:-$LANG}"

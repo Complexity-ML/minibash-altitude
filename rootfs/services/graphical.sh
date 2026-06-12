@@ -2,14 +2,16 @@
 # Start the Altitude GNOME desktop without systemd or a display manager.
 set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-export LANG="${LANG:-C}"
-export LC_ALL="${LC_ALL:-$LANG}"
-export LANGUAGE="${LANGUAGE:-$LANG}"
-if command -v locale >/dev/null 2>&1 && ! locale -a 2>/dev/null | grep -qx "$LC_ALL"; then
-  export LANG=C
-  export LC_ALL=C
-  export LANGUAGE=C
-fi
+normalize_locale() {
+  export LANG="${LANG:-C}"
+  case "${LC_ALL:-$LANG}" in
+    C|POSIX) ;;
+    *) LC_ALL=C ;;
+  esac
+  export LC_ALL="${LC_ALL:-C}"
+  export LANGUAGE="${LANGUAGE:-$LANG}"
+}
+normalize_locale
 exec >>/var/log/graphical.log 2>&1
 
 VT="${ALTITUDE_GRAPHICAL_VT:-2}"
@@ -108,13 +110,12 @@ LOG=/var/log/gnome-shell.log
 
 export TZ="${TZ:-UTC}"
 export LANG="${LANG:-C}"
-export LC_ALL="${LC_ALL:-$LANG}"
+case "${LC_ALL:-$LANG}" in
+  C|POSIX) ;;
+  *) LC_ALL=C ;;
+esac
+export LC_ALL="${LC_ALL:-C}"
 export LANGUAGE="${LANGUAGE:-$LANG}"
-if command -v locale >/dev/null 2>&1 && ! locale -a 2>/dev/null | grep -qx "$LC_ALL"; then
-  export LANG=C
-  export LC_ALL=C
-  export LANGUAGE=C
-fi
 export XDG_RUNTIME_DIR="$RUNTIME_DIR"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_SESSION_TYPE=wayland

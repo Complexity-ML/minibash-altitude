@@ -140,7 +140,7 @@ run_sway() {
 echo "sway-session: launching \$(date 2>/dev/null)" > "$SWAY_LOG"
 exec setpriv --reuid $DESKTOP_UID --regid $DESKTOP_GID --init-groups \\
   env HOME=$DESKTOP_HOME USER=$DESKTOP_USER LOGNAME=$DESKTOP_USER \\
-      LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \\
+      LANG=C LC_ALL=C LANGUAGE=C \\
       XDG_RUNTIME_DIR=$RUNTIME_DIR XDG_SESSION_TYPE=wayland \\
       LIBSEAT_BACKEND=seatd WLR_RENDERER_ALLOW_SOFTWARE=1 \\
       ${WLR_DRM_DEVICES:+WLR_DRM_DEVICES=$WLR_DRM_DEVICES} \\
