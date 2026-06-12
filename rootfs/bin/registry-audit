@@ -238,6 +238,27 @@ audit_apps() {
   registry_set /system/apps/registry/refreshed bool true
 }
 
+audit_fonts() {
+  local sans mono gfont gmono mono_family mono_ok
+  sans="$(fc-match sans 2>/dev/null | head -n 1 || echo missing)"
+  mono="$(fc-match monospace 2>/dev/null | head -n 1 || echo missing)"
+  gfont="$(gsettings get org.gnome.desktop.interface font-name 2>/dev/null || echo unknown)"
+  gmono="$(gsettings get org.gnome.desktop.interface monospace-font-name 2>/dev/null || echo unknown)"
+  mono_family="$(printf '%s\n' "$mono" | sed -n 's/.*: "\([^"]*\)".*/\1/p')"
+  [ -n "$mono_family" ] || mono_family=unknown
+  mono_ok=false
+  case "$(printf '%s' "$mono_family" | tr 'A-Z' 'a-z')" in
+    *mono*|*code*|*console*|*fixed*) mono_ok=true ;;
+  esac
+
+  registry_set /system/desktop/fonts/sans-match string "$sans"
+  registry_set /system/desktop/fonts/monospace-match string "$mono"
+  registry_set /system/desktop/fonts/gnome-font string "$gfont"
+  registry_set /system/desktop/fonts/gnome-monospace-font string "$gmono"
+  registry_set /system/desktop/fonts/monospace-family string "$mono_family"
+  registry_set /system/desktop/fonts/monospace-ok bool "$mono_ok"
+}
+
 cmd_refresh() {
   ensure_table
   local host uptime root_src root_fs cmdline kernel product_name product_version
@@ -303,6 +324,7 @@ cmd_refresh() {
   registry_set /system/desktop/gnome-shell/running bool "$shell_running"
   registry_set /system/desktop/gnome-shell/pid int "${gnome_pid:-0}"
   audit_gpu /dev/dri/card0
+  audit_fonts
   audit_pressure
   audit_apps
 

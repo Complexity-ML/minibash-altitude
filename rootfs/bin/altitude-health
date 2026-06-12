@@ -74,6 +74,7 @@ collect() {
   local systemd_state network iface addr wifi_ok ssh_ok graphical_state
   local shell_pid shell_ok gdm_state gpu_render gpu_accel pressure_cpu
   local gpu_driver mesa_driver pmu_ok atomic_ok atomic_requested shadow_buffer gpu_detail
+  local font_mono font_mono_family font_mono_ok
   local messages status
 
   ts="$(now_iso)"
@@ -123,6 +124,13 @@ collect() {
   gpu_accel=true
   grep -q 'Not hardware accelerated' /var/log/gnome-shell.log 2>/dev/null && gpu_accel=false
   pressure_cpu="$(awk '$1 == "some" { for (i = 2; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "avg10") { print int(kv[2]); exit } } }' /proc/pressure/cpu 2>/dev/null || echo 0)"
+  font_mono="$(fc-match monospace 2>/dev/null | head -n 1 || echo missing)"
+  font_mono_family="$(printf '%s\n' "$font_mono" | sed -n 's/.*: "\([^"]*\)".*/\1/p')"
+  [ -n "$font_mono_family" ] || font_mono_family=unknown
+  font_mono_ok=false
+  case "$(printf '%s' "$font_mono_family" | tr 'A-Z' 'a-z')" in
+    *mono*|*code*|*console*|*fixed*) font_mono_ok=true ;;
+  esac
 
   messages=""
   [ "$pid1_ok" = true ] || { overall=fail; messages="${messages} pid1=$pid1"; }
@@ -134,6 +142,7 @@ collect() {
   [ "$mesa_driver" = true ] || { [ "$overall" = fail ] || overall=warn; messages="${messages} gpu=mesa-driver-missing"; }
   [ "$gpu_accel" = true ] || { [ "$overall" = fail ] || overall=warn; messages="${messages} gpu=degraded"; }
   [ "$pmu_ok" = true ] || { [ "$overall" = fail ] || overall=warn; messages="${messages} gpu=pmu-missing"; }
+  [ "$font_mono_ok" = true ] || { [ "$overall" = fail ] || overall=warn; messages="${messages} font=monospace-fallback"; }
   [ "${failed_units:-0}" = 0 ] || { [ "$overall" = fail ] || overall=warn; messages="${messages} failed-units=$failed_units"; }
   [ -n "$messages" ] || messages="all primary checks passed"
 
@@ -160,6 +169,8 @@ collect() {
   registry_set /system/health/graphical-service string "$graphical_state"
   registry_set /system/health/gdm-service string "$gdm_state"
   registry_set /system/health/cpu-pressure-avg10 int "${pressure_cpu:-0}"
+  registry_set /system/health/font-monospace bool "$font_mono_ok"
+  registry_set /system/health/font-monospace-family string "$font_mono_family"
 
   status="$overall"
   {
@@ -169,6 +180,7 @@ collect() {
     status_line ssh "$([ "$ssh_ok" = true ] && echo ok || echo warn)" "dropbear=$ssh_ok"
     status_line gnome "$([ "$shell_ok" = true ] && echo ok || echo warn)" "shell_pid=${shell_pid:-0} graphical=$graphical_state gdm=$gdm_state"
     status_line gpu "$([ "$gpu_accel" = true ] && [ "$pmu_ok" = true ] && echo ok || echo warn)" "$gpu_detail"
+    status_line fonts "$([ "$font_mono_ok" = true ] && echo ok || echo warn)" "monospace=$font_mono_family match=$font_mono"
     status_line load ok "cpu_pressure_avg10=${pressure_cpu:-0}"
   } >/tmp/altitude-health.$$
 
